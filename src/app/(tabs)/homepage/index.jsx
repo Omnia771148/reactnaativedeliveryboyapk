@@ -2,7 +2,7 @@ import { styles } from '@/styles/homepage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { API_URL } from '@/constants/api';
@@ -125,11 +125,11 @@ export default function HomepageScreen() {
           router.replace('/orders');
         }
       } else {
-        alert(data.message || 'Failed to update active status.');
+        Alert.alert('Error', data.message || 'Failed to update active status.');
       }
     } catch (error) {
       console.error('Error toggling status:', error);
-      alert('Network error. Check if your backend server is running.');
+      Alert.alert('Error', 'Network error. Check if your backend server is running.');
     } finally {
       setUpdating(false);
     }

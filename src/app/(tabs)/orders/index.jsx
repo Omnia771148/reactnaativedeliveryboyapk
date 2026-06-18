@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { LoadingOverlay } from '@/components/loading-overlay';
-import { ActivityIndicator, Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_URL } from '@/constants/api';
 
@@ -47,6 +47,8 @@ export default function OrdersScreen() {
   const [isActive, setIsActive] = useState(true);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalMessage, setErrorModalMessage] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const [hasActiveOrder, setHasActiveOrder] = useState(false);
 
   const bounceAnim = useRef(new Animated.Value(0)).current;
 
@@ -93,6 +95,28 @@ export default function OrdersScreen() {
         return;
       }
 
+      // Check if this delivery boy has an active order in progress
+      let hasActive = false;
+      let currentActiveOrderId = null;
+      if (storedId) {
+        try {
+          const activeCheckResponse = await fetch(`${API_URL}/api/deliveryboy/${storedId}/activeorder`);
+          if (activeCheckResponse.ok) {
+            const text = await activeCheckResponse.text();
+            if (text && text.trim().length > 0) {
+              const activeData = JSON.parse(text);
+              if (activeData && activeData.orderId) {
+                hasActive = true;
+                currentActiveOrderId = activeData.orderId;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to check active order status:', err);
+        }
+      }
+      setHasActiveOrder(hasActive);
+
       const response = await fetch(`${API_URL}/api/acceptedorders`);
       if (response.ok) {
         let data = [];
@@ -103,9 +127,15 @@ export default function OrdersScreen() {
           console.error('Failed to parse accepted orders JSON');
         }
         // Filter out orders that have already been rejected by this user
-        const activeOrders = storedId
+        let activeOrders = storedId
           ? (Array.isArray(data) ? data.filter(order => !order.rejectedBy || !order.rejectedBy.includes(storedId)) : [])
           : data;
+
+        // Filter out the order that the current delivery boy has already accepted
+        if (currentActiveOrderId) {
+          activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId);
+        }
+
         setOrders(activeOrders);
       } else {
         console.error('Failed to fetch accepted orders:', response.status);
@@ -193,6 +223,8 @@ export default function OrdersScreen() {
   };
 
   const handleAcceptOrder = async (order) => {
+    if (updating) return;
+    setUpdating(true);
     try {
       const deliveryBoyId = await AsyncStorage.getItem('userid');
       const deliveryBoyName = await AsyncStorage.getItem('name');
@@ -201,6 +233,36 @@ export default function OrdersScreen() {
       if (!deliveryBoyId || !deliveryBoyName || !deliveryBoyPhone) {
         customAlert('Error', 'Delivery partner profile details not found. Please log in again.');
         return;
+      }
+
+      // Check locally if there's an active order first
+      if (hasActiveOrder) {
+        customAlert(
+          'Active Order Alert',
+          'You already have an active order. Please complete it to accept a second order.'
+        );
+        return;
+      }
+
+      // Live check with backend to prevent race condition
+      try {
+        const activeCheckResponse = await fetch(`${API_URL}/api/deliveryboy/${deliveryBoyId}/activeorder`);
+        if (activeCheckResponse.ok) {
+          const text = await activeCheckResponse.text();
+          if (text && text.trim().length > 0) {
+            const activeData = JSON.parse(text);
+            if (activeData && activeData.orderId) {
+              setHasActiveOrder(true);
+              customAlert(
+                'Active Order Alert',
+                'You already have an active order. Please complete it to accept a second order.'
+              );
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed live active order check:', err);
       }
 
       const response = await fetch(`${API_URL}/api/acceptedorders/${order._id}/accept`, {
@@ -244,10 +306,14 @@ export default function OrdersScreen() {
     } catch (error) {
       console.error('Failed to accept order:', error);
       customAlert('Error', 'Network error. Please try again.');
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleRejectOrder = async (order) => {
+    if (updating) return;
+    setUpdating(true);
     try {
       const userId = await AsyncStorage.getItem('userid');
       if (!userId) {
@@ -278,6 +344,8 @@ export default function OrdersScreen() {
     } catch (error) {
       console.error('Failed to reject order:', error);
       customAlert('Error', 'Network error. Please try again.');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -360,6 +428,7 @@ export default function OrdersScreen() {
 
   return (
     <View style={styles.container}>
+      <LoadingOverlay visible={updating} />
       <SafeAreaView style={styles.safeArea}>
         {/* Custom Header Bar */}
         <View style={styles.headerBar}>
@@ -375,6 +444,15 @@ export default function OrdersScreen() {
           </View>
           <View style={styles.headerSpacer} />
         </View>
+
+        {isActive && hasActiveOrder && (
+          <View style={styles.warningBanner}>
+            <Ionicons name="warning" size={20} color="#FFFFFF" />
+            <Text style={styles.warningBannerText}>
+              You have an active order. Complete it to accept more.
+            </Text>
+          </View>
+        )}
 
         {!isActive ? (
           <View style={styles.inactiveContainer}>
@@ -446,6 +524,28 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FAF9F6',
+  },
+  warningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#CE3A31', // Crimson red theme
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 16,
+    gap: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  warningBannerText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
   },
   safeArea: {
     flex: 1,
