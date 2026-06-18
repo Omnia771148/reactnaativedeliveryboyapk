@@ -24,8 +24,16 @@ export default function HomepageScreen() {
     try {
       const response = await fetch(`${API_URL}/api/deliveryboy/${id}/earnings`);
       if (response.ok) {
-        const data = await response.json();
-        setStats(data);
+        let data = null;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse earnings response JSON');
+        }
+        if (data) {
+          setStats(data);
+        }
       }
     } catch (error) {
       console.error('Error fetching earnings:', error);

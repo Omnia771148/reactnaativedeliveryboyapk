@@ -52,8 +52,16 @@ export default function ProfileScreen() {
 
         const response = await fetch(`${API_URL}/api/users/${storedId}`);
         if (response.ok) {
-          const data = await response.json();
-          setUser(data);
+          let data = null;
+          try {
+            const text = await response.text();
+            data = JSON.parse(text);
+          } catch (_e) {
+            console.error('Failed to parse user profile JSON');
+          }
+          if (data) {
+            setUser(data);
+          }
         } else {
           console.error('Failed to fetch user profile:', response.status);
         }

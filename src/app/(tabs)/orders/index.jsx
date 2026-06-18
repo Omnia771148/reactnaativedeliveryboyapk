@@ -95,10 +95,16 @@ export default function OrdersScreen() {
 
       const response = await fetch(`${API_URL}/api/acceptedorders`);
       if (response.ok) {
-        const data = await response.json();
+        let data = [];
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse accepted orders JSON');
+        }
         // Filter out orders that have already been rejected by this user
         const activeOrders = storedId
-          ? data.filter(order => !order.rejectedBy || !order.rejectedBy.includes(storedId))
+          ? (Array.isArray(data) ? data.filter(order => !order.rejectedBy || !order.rejectedBy.includes(storedId)) : [])
           : data;
         setOrders(activeOrders);
       } else {
@@ -209,7 +215,13 @@ export default function OrdersScreen() {
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
+      let data = {};
+      try {
+        const text = await response.text();
+        data = JSON.parse(text);
+      } catch (_e) {
+        data = { message: 'Server is starting up or returned an invalid response. Please try again in a few seconds.' };
+      }
 
       if (response.ok) {
         fetchOrders();
@@ -254,7 +266,13 @@ export default function OrdersScreen() {
       if (response.ok) {
         fetchOrders(); // Refresh to remove the rejected order from view
       } else {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData = {};
+        try {
+          const text = await response.text();
+          errorData = JSON.parse(text);
+        } catch (_e) {
+          errorData = { message: 'Server is starting up or returned an invalid response. Please try again in a few seconds.' };
+        }
         customAlert('Error', errorData.message || 'Failed to reject order');
       }
     } catch (error) {

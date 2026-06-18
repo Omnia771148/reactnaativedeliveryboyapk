@@ -32,7 +32,13 @@ export default function MyOrdersScreen() {
 
       const response = await fetch(`${API_URL}/api/deliveryboy/${storedId}/orders`);
       if (response.ok) {
-        const data = await response.json();
+        let data = [];
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse orders response JSON');
+        }
         setOrders(data);
       } else {
         console.error('Failed to fetch orders:', response.status);

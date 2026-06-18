@@ -22,7 +22,13 @@ export default function MyReviewsScreen() {
 
       const response = await fetch(`${API_URL}/api/deliveryboy/${storedId}/reviews`);
       if (response.ok) {
-        const data = await response.json();
+        let data = [];
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse reviews JSON');
+        }
         setReviews(data);
       } else {
         console.error('Failed to fetch reviews:', response.status);

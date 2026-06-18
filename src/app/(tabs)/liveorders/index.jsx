@@ -33,8 +33,16 @@ export default function LiveOrdersScreen() {
     try {
       const response = await fetch(`${API_URL}/api/deliveryboy/${id}/activeorder`);
       if (response.ok) {
-        const data = await response.json();
-        setActiveOrder(data);
+        let data = null;
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse active order JSON');
+        }
+        if (data) {
+          setActiveOrder(data);
+        }
       } else if (response.status === 404) {
         setActiveOrder(null);
       } else {
@@ -119,11 +127,20 @@ export default function LiveOrdersScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({}),
       });
 
-      const data = await response.json();
+      let data = {};
+      let rawText = '';
+      try {
+        rawText = await response.text();
+        data = JSON.parse(rawText);
+      } catch (_e) {
+        const snippet = rawText ? rawText.trim().slice(0, 120) : 'Empty response';
+        data = { message: `Server returned invalid response (Status: ${response.status}).\n\nPreview: ${snippet}` };
+      }
+
       if (response.ok) {
-        Alert.alert('Success', 'Order status updated to Out for Delivery.');
         // Refresh local state to render OTP input layout
         await fetchActiveOrder(userid);
       } else {
@@ -176,7 +193,16 @@ export default function LiveOrdersScreen() {
         body: JSON.stringify({ otp: otpString }),
       });
 
-      const data = await response.json();
+      let data = {};
+      let rawText = '';
+      try {
+        rawText = await response.text();
+        data = JSON.parse(rawText);
+      } catch (_e) {
+        const snippet = rawText ? rawText.trim().slice(0, 120) : 'Empty response';
+        data = { message: `Server returned invalid response (Status: ${response.status}).\n\nPreview: ${snippet}` };
+      }
+
       if (response.ok) {
         setModalType('success');
         setModalMessage('Order completed successfully!');
