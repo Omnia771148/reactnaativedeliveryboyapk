@@ -1,11 +1,11 @@
 import { LoadingOverlay } from '@/components/loading-overlay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from '@/constants/api';
 
 // Custom User Profile Icon built using standard Views to match color guidelines exactly
 const UserIcon = ({ color }) => (
@@ -22,17 +22,6 @@ const LockIcon = ({ color }) => (
     <View style={[styles.lockBody, { backgroundColor: color }]} />
   </View>
 );
-
-// Dynamically resolve backend API address on local network for physical devices (Expo Go)
-const getApiUrl = () => {
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:5000`;
-  }
-  return 'http://localhost:5000'; // Fallback for production or Web builds
-};
-const API_URL = getApiUrl();
 
 export default function HomeScreen() {
   const [mobileNumber, setMobileNumber] = useState('');

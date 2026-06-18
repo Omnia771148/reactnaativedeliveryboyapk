@@ -1,23 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { ActivityIndicator, Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// Resolve local server host address for dev environments
-const getApiUrl = () => {
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:5000`;
-  }
-  return 'http://localhost:5000';
-};
-const API_URL = getApiUrl();
+import { API_URL } from '@/constants/api';
 
 const customAlert = (title, message, buttons = []) => {
   if (Platform.OS === 'web') {

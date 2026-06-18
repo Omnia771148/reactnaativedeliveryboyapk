@@ -4,20 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { router, useNavigation } from 'expo-router';
 import { LoadingOverlay } from '@/components/loading-overlay';
-
-// Dynamically resolve backend API address on local network for physical devices (Expo Go)
-const getApiUrl = () => {
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:5000`;
-  }
-  return 'http://localhost:5000'; // Fallback for production or Web builds
-};
-const API_URL = getApiUrl();
+import { API_URL } from '@/constants/api';
 
 export default function LiveOrdersScreen() {
   const navigation = useNavigation();

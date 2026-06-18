@@ -1,22 +1,11 @@
 import { styles } from '@/styles/homepage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-
-// Dynamically resolve backend API address on local network for physical devices (Expo Go)
-const getApiUrl = () => {
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:5000`;
-  }
-  return 'http://localhost:5000'; // Fallback for production or Web builds
-};
-const API_URL = getApiUrl();
+import { API_URL } from '@/constants/api';
 
 export default function HomepageScreen() {
   const [userid, setUserid] = useState(null);

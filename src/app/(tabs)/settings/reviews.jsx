@@ -4,19 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { LoadingOverlay } from '@/components/loading-overlay';
-
-// Resolve local server host address for dev environments
-const getApiUrl = () => {
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const ip = debuggerHost.split(':')[0];
-    return `http://${ip}:5000`;
-  }
-  return 'http://localhost:5000';
-};
-const API_URL = getApiUrl();
+import { API_URL } from '@/constants/api';
 
 export default function MyReviewsScreen() {
   const [reviews, setReviews] = useState([]);
