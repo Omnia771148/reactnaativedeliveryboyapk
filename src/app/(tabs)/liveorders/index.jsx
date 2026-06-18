@@ -243,6 +243,7 @@ export default function LiveOrdersScreen() {
 
   return (
     <View style={styles.container}>
+      <LoadingOverlay visible={updating} />
       <SafeAreaView style={styles.safeArea}>
         {/* Custom Header Bar */}
         <View style={styles.headerBar}>
