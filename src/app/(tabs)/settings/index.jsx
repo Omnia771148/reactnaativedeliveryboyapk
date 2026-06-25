@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from '@/constants/api';
 
 export default function SettingsScreen() {
   const [user, setUser] = useState({ name: 'sai', phone: '6301366183' });
@@ -37,6 +38,35 @@ export default function SettingsScreen() {
   const confirmPerformLogout = async () => {
     setLogoutModalVisible(false);
     try {
+      const storedId = await AsyncStorage.getItem('userid');
+      if (storedId) {
+        // 1. Mark offline on the backend
+        try {
+          await fetch(`${API_URL}/api/users/${storedId}/status`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ isActive: false }),
+          });
+        } catch (err) {
+          console.error('Error marking user offline during logout:', err);
+        }
+
+        // 2. Clear push token on the backend
+        try {
+          await fetch(`${API_URL}/api/users/${storedId}/push-token`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ pushToken: '' }),
+          });
+        } catch (err) {
+          console.error('Error clearing push token during logout:', err);
+        }
+      }
+
       await AsyncStorage.multiRemove([
         'userid',
         'name',

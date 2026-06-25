@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, TouchableOpacity, View, DeviceEventEmitter } from 'react-native';
 
@@ -150,7 +150,81 @@ function CustomTabBar({ state, descriptors, navigation }) {
   );
 }
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import messaging from '@react-native-firebase/messaging';
+import { Alert } from 'react-native';
+import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+
 export default function Layout() {
+  useEffect(() => {
+    let isMounted = true;
+    let unsubscribeMessage = null;
+    let unsubscribeTokenRefresh = null;
+    let unsubscribeNotificationOpened = null;
+
+    const setupNotifications = async () => {
+      try {
+        const storedId = await AsyncStorage.getItem('userid');
+        if (!storedId) return;
+
+        // Register for push notifications and get FCM token
+        const token = await registerForFCMAsync();
+        if (token && isMounted) {
+          await saveFCMTokenToBackend(storedId, token);
+        }
+
+        // Handle token refresh dynamically
+        unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
+          if (isMounted) {
+            console.log('FCM Token Refreshed:', newToken);
+            await saveFCMTokenToBackend(storedId, newToken);
+          }
+        });
+
+        // Listen to messages received in the foreground
+        unsubscribeMessage = messaging().onMessage(async (remoteMessage) => {
+          if (isMounted) {
+            console.log('Foreground Message received:', remoteMessage);
+            Alert.alert(
+              remoteMessage.notification?.title || 'New Order Alert',
+              remoteMessage.notification?.body || 'A new order has been received.'
+            );
+          }
+        });
+
+        // Handle when a notification is clicked while the app is in the background
+        unsubscribeNotificationOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
+          if (isMounted) {
+            console.log('Notification caused app to open from background:', remoteMessage);
+            router.push('/orders');
+          }
+        });
+
+        // Check if the app was opened from a completely closed (quit) state via a notification
+        messaging()
+          .getInitialNotification()
+          .then((remoteMessage) => {
+            if (remoteMessage && isMounted) {
+              console.log('Notification caused app to open from quit state:', remoteMessage);
+              router.push('/orders');
+            }
+          });
+
+      } catch (error) {
+        console.error('Failed to setup FCM notifications in layout:', error);
+      }
+    };
+
+    setupNotifications();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribeMessage) unsubscribeMessage();
+      if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();
+      if (unsubscribeNotificationOpened) unsubscribeNotificationOpened();
+    };
+  }, []);
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}

@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LoadingOverlay } from '@/components/loading-overlay';
-import { API_URL } from '@/constants/api';
+import { API_URL, fetchWithTimeout } from '@/constants/api';
 
 export default function ProfileScreen() {
   const [user, setUser] = useState(null);
@@ -50,7 +50,7 @@ export default function ProfileScreen() {
           return;
         }
 
-        const response = await fetch(`${API_URL}/api/users/${storedId}`);
+        const response = await fetchWithTimeout(`${API_URL}/api/users/${storedId}`, {}, 8000);
         if (response.ok) {
           let data = null;
           try {

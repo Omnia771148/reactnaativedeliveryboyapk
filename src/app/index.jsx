@@ -1,11 +1,11 @@
 import { LoadingOverlay } from '@/components/loading-overlay';
+import { API_URL, fetchWithTimeout } from '@/constants/api';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { useState, useEffect } from 'react';
-import { StyleSheet, Text, TextInput, TouchableOpacity, View, Modal } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { API_URL } from '@/constants/api';
 
 // Custom User Profile Icon built using standard Views to match color guidelines exactly
 const UserIcon = ({ color }) => (
@@ -30,6 +30,7 @@ export default function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState('');
   const [modalType, setModalType] = useState('error'); // 'error' or 'no_account'
+  const [showPassword, setShowPassword] = useState(false);
 
   // Auto-login logic: check if user session is active and valid (expires in 30 days of inactivity)
   useEffect(() => {
@@ -79,44 +80,67 @@ export default function HomeScreen() {
 
     setLoading(true);
 
-    try {
-      const response = await fetch(`${API_URL}/api/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          phone: mobileNumber,
-          password: password,
-        }),
-      });
-
-      let data = {};
+    const tryLoginWithPhone = async (phoneToTry) => {
       try {
-        const text = await response.text();
-        data = JSON.parse(text);
-      } catch (_e) {
-        data = { message: 'Invalid response from server. Check if backend is running.' };
+        const response = await fetchWithTimeout(`${API_URL}/api/login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            phone: phoneToTry,
+            password: password,
+          }),
+        }, 10000);
+
+        let data = {};
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          data = { message: 'Invalid response from server. Check if backend is running.' };
+        }
+
+        return { ok: response.ok, status: response.status, data };
+      } catch (error) {
+        throw error;
+      }
+    };
+
+    try {
+      // 1. Try first with '+91' prefix (standard format for newly signed up accounts)
+      const primaryPhone = mobileNumber.startsWith('+') ? mobileNumber : `+91${mobileNumber}`;
+      let res = await tryLoginWithPhone(primaryPhone);
+
+      // 2. If it fails, fallback to raw 10-digit number (for older database accounts)
+      if (!res.ok && res.data.errorType !== 'CONNECTION_ERROR') {
+        const fallbackPhone = mobileNumber;
+        if (fallbackPhone !== primaryPhone) {
+          const fallbackRes = await tryLoginWithPhone(fallbackPhone);
+          if (fallbackRes.ok) {
+            res = fallbackRes;
+          }
+        }
       }
 
-      if (response.ok) {
+      if (res.ok) {
         // Save user fields to AsyncStorage (localstorage)
-        await AsyncStorage.setItem('userid', data.user._id ? String(data.user._id) : '');
-        await AsyncStorage.setItem('name', data.user.name ? String(data.user.name) : '');
-        await AsyncStorage.setItem('phone', data.user.phone ? String(data.user.phone) : '');
-        await AsyncStorage.setItem('isActive', String(!!data.user.isActive));
-        await AsyncStorage.setItem('updatedAt', data.user.updatedAt ? String(data.user.updatedAt) : '');
+        await AsyncStorage.setItem('userid', res.data.user._id ? String(res.data.user._id) : '');
+        await AsyncStorage.setItem('name', res.data.user.name ? String(res.data.user.name) : '');
+        await AsyncStorage.setItem('phone', res.data.user.phone ? String(res.data.user.phone) : '');
+        await AsyncStorage.setItem('isActive', String(!!res.data.user.isActive));
+        await AsyncStorage.setItem('updatedAt', res.data.user.updatedAt ? String(res.data.user.updatedAt) : '');
         await AsyncStorage.setItem('lastLoginDate', new Date().toISOString());
 
-        console.log('Successfully saved user session:', data.user);
+        console.log('Successfully saved user session:', res.data.user);
         router.replace('/homepage');
       } else {
-        if (data.errorType === 'NO_ACCOUNT') {
+        if (res.data.errorType === 'NO_ACCOUNT') {
           setModalType('no_account');
           setModalMessage('no account found');
         } else {
           setModalType('error');
-          setModalMessage(data.message || 'incorrect id and password');
+          setModalMessage(res.data.message || 'incorrect id and password');
         }
         setModalVisible(true);
       }
@@ -132,9 +156,6 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Loading Overlay */}
-      <LoadingOverlay visible={loading} />
-
       {/* Split Screen Background */}
       <View style={StyleSheet.absoluteFill}>
         <View style={styles.splitBackground}>
@@ -174,11 +195,22 @@ export default function HomeScreen() {
                 style={[styles.input, styles.passwordInput]}
                 placeholder="Password"
                 placeholderTextColor="#E55B49"
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
                 editable={!loading}
               />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeIcon}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={showPassword ? "eye-outline" : "eye-off-outline"}
+                  size={20}
+                  color="#E55B49"
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Forgot Password Link */}
@@ -186,6 +218,7 @@ export default function HomeScreen() {
               style={styles.forgotPasswordButton}
               activeOpacity={0.7}
               disabled={loading}
+              onPress={() => router.push('/forgot-password')}
             >
               <Text style={styles.forgotPasswordText}>Forgot password ?</Text>
             </TouchableOpacity>
@@ -207,7 +240,7 @@ export default function HomeScreen() {
           <View style={styles.footerContainer}>
             <Text style={styles.footerText}>
               Don’t have account?{' '}
-              <Text style={styles.createText} onPress={() => { }}>create</Text>
+              <Text style={styles.createText} onPress={() => router.push('/signup')}>create</Text>
             </Text>
           </View>
         </View>
@@ -254,6 +287,9 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Loading Overlay placed at the bottom so it renders on top of all sibling components */}
+      <LoadingOverlay visible={loading} />
     </View>
   );
 }
@@ -478,5 +514,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  eyeIcon: {
+    position: 'absolute',
+    right: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
   },
 });
