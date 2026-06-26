@@ -95,6 +95,16 @@ export default function DeliveryBoySignup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
+  const [modalType, setModalType] = useState("error"); // 'success' or 'error'
+  const [successRedirect, setSuccessRedirect] = useState(false);
+
+  const handleModalClose = () => {
+    setModalVisible(false);
+    if (successRedirect) {
+      setSuccessRedirect(false);
+      router.replace("/");
+    }
+  };
 
   const handleFileChange = async (fieldName) => {
     // Request permission to access system photo library
@@ -250,6 +260,7 @@ export default function DeliveryBoySignup() {
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       setModalMessage("Please enter all the details");
+      setModalType("error");
       setModalVisible(true);
       return;
     }
@@ -280,7 +291,9 @@ export default function DeliveryBoySignup() {
         const result = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
         setConfirmationResult(result);
         setIsOtpSent(true);
-        Alert.alert("OTP Sent", "OTP has been sent to your phone number via SMS.");
+        setModalMessage("OTP has been sent to your phone number via SMS.");
+        setModalType("success");
+        setModalVisible(true);
       } else if (isExpoGo) {
         // Native mobile flow - bypass recaptcha issues in Expo Go
         // Since real recaptcha is not supported natively in Expo Go without native builds,
@@ -301,20 +314,26 @@ export default function DeliveryBoySignup() {
         };
         setConfirmationResult(mockConfirmationResult);
         setIsOtpSent(true);
-        Alert.alert("OTP Sent (Development)", "Enter the verification code '123456' to proceed.");
+        setModalMessage("Enter the verification code '123456' to proceed.");
+        setModalType("success");
+        setModalVisible(true);
       } else {
         // Native APK flow - Real SMS OTP using React Native Firebase Auth
         const nativeAuth = require("@react-native-firebase/auth").default;
         const result = await nativeAuth().signInWithPhoneNumber(formattedPhone);
         setConfirmationResult(result);
         setIsOtpSent(true);
-        Alert.alert("OTP Sent", "OTP has been sent to your phone number via SMS.");
+        setModalMessage("OTP has been sent to your phone number via SMS.");
+        setModalType("success");
+        setModalVisible(true);
       }
     } catch (error) {
       console.error("OTP Error:", error);
       let msg = "Failed to send OTP: " + (error.message || "Unknown error");
       setErrorMessage(msg);
-      Alert.alert("Error", msg);
+      setModalMessage(msg);
+      setModalType("error");
+      setModalVisible(true);
     } finally {
       setIsSendingOtp(false);
     }
@@ -323,7 +342,9 @@ export default function DeliveryBoySignup() {
   const handleSubmit = async () => {
     const trimmedOtp = otp.trim();
     if (!trimmedOtp) {
-      Alert.alert("Validation Error", "Please enter the OTP received.");
+      setModalMessage("Please enter the OTP received.");
+      setModalType("error");
+      setModalVisible(true);
       return;
     }
 
@@ -384,17 +405,22 @@ export default function DeliveryBoySignup() {
 
       const data = await res.json();
       if (res.ok) {
-        Alert.alert("Success", data.message || "Signup Request Submitted!", [
-          { text: "OK", onPress: () => router.replace("/") }
-        ]);
+        setModalMessage(data.message || "Signup Request Submitted!");
+        setModalType("success");
+        setSuccessRedirect(true);
+        setModalVisible(true);
       } else {
-        Alert.alert("Signup Failed", data.message || "Signup failed");
+        setModalMessage(data.message || "Signup failed");
+        setModalType("error");
+        setModalVisible(true);
         setIsSubmitting(false);
       }
     } catch (error) {
       console.error("Verification/Signup error:", error);
       const msg = "Signup Failed: " + (error.message || "Unknown error");
-      Alert.alert("Error", msg);
+      setModalMessage(msg);
+      setModalType("error");
+      setModalVisible(true);
       setIsSubmitting(false);
     }
   };
@@ -833,18 +859,21 @@ export default function DeliveryBoySignup() {
       </SafeAreaView>
       <View id="recaptcha-container" />
 
-      {/* Custom Error Modal matching the screenshot layout */}
+      {/* Custom Alert Modal */}
       <Modal
         animationType="fade"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={handleModalClose}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <View style={styles.modalIconCircle}>
+            <View style={[
+              styles.modalIconCircle,
+              modalType === "success" ? styles.modalIconCircleSuccess : styles.modalIconCircleError
+            ]}>
               <Ionicons
-                name="close-outline"
+                name={modalType === "success" ? "checkmark-outline" : "close-outline"}
                 size={48}
                 color="#FFFFFF"
               />
@@ -853,7 +882,7 @@ export default function DeliveryBoySignup() {
             <TouchableOpacity
               style={styles.modalButton}
               activeOpacity={0.8}
-              onPress={() => setModalVisible(false)}
+              onPress={handleModalClose}
             >
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
@@ -1135,10 +1164,15 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#E55B49", // Coral red
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 24,
+  },
+  modalIconCircleError: {
+    backgroundColor: "#E55B49", // Coral red
+  },
+  modalIconCircleSuccess: {
+    backgroundColor: "#2EBD6B", // Vibrant green
   },
   modalMessageText: {
     fontSize: 22,
