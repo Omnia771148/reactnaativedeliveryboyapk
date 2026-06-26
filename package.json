@@ -10,6 +10,7 @@
     "@react-native-firebase/auth": "^24.1.1",
     "@react-native-firebase/messaging": "^24.1.1",
     "expo": "~56.0.12",
+    "expo-av": "^16.0.8",
     "expo-constants": "~56.0.18",
     "expo-device": "~56.0.4",
     "expo-font": "~56.0.7",

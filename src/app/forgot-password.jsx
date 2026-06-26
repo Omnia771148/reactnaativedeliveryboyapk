@@ -187,8 +187,8 @@ export default function ForgotPassword() {
   const handleResetPassword = async () => {
     setError("");
 
-    if (newPassword.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (newPassword.length < 4) {
+      setError("Password must be at least 4 characters");
       return;
     }
 
@@ -256,6 +256,7 @@ export default function ForgotPassword() {
         </TouchableOpacity>
 
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
         >
@@ -421,14 +422,13 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
     zIndex: 100,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContainer: {
+    flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: 24,
     paddingTop: 100,
@@ -473,11 +473,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 340,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 12,
-    elevation: 4,
   },
   stepContainer: {
     width: "100%",
@@ -540,11 +535,6 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
   },
   submitBtnText: {
     color: "#000000",

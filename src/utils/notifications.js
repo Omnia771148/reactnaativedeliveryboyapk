@@ -1,9 +1,27 @@
-import messaging from '@react-native-firebase/messaging';
 import { Platform, PermissionsAndroid } from 'react-native';
 import { API_URL } from '@/constants/api';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+function getMessaging() {
+  if (isExpoGo) return null;
+  try {
+    return require('@react-native-firebase/messaging').default;
+  } catch (error) {
+    console.warn('Firebase Messaging native module not found');
+    return null;
+  }
+}
 
 export async function requestNotificationPermission() {
   if (Platform.OS === 'web') return false;
+
+  const messagingModule = getMessaging();
+  if (!messagingModule) {
+    console.log('Skipping notification permission - Firebase Messaging not available in Expo Go');
+    return false;
+  }
 
   try {
     // 1. Request Android 13+ Notification Permission if applicable
@@ -21,10 +39,10 @@ export async function requestNotificationPermission() {
     }
 
     // 2. Request FCM Permission (iOS/macOS and general FCM status registration)
-    const authStatus = await messaging().requestPermission();
+    const authStatus = await messagingModule().requestPermission();
     const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      authStatus === messagingModule.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messagingModule.AuthorizationStatus.PROVISIONAL;
     return enabled;
   } catch (error) {
     console.error('Error requesting notification permission:', error);
@@ -35,6 +53,9 @@ export async function requestNotificationPermission() {
 export async function registerForFCMAsync() {
   if (Platform.OS === 'web') return null;
 
+  const messagingModule = getMessaging();
+  if (!messagingModule) return null;
+
   try {
     const hasPermission = await requestNotificationPermission();
     if (!hasPermission) {
@@ -43,7 +64,7 @@ export async function registerForFCMAsync() {
     }
 
     // Fetch FCM Token
-    const token = await messaging().getToken();
+    const token = await messagingModule().getToken();
     console.log('Retrieved FCM Token:', token);
     return token;
   } catch (error) {

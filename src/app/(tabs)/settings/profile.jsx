@@ -98,6 +98,7 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView 
+          style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
@@ -310,7 +311,11 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 44, // Matches backButton width to center the title pill
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
+    flexGrow: 1,
     paddingBottom: 100, // Safe padding above bottom navigation bar
   },
   detailsCard: {

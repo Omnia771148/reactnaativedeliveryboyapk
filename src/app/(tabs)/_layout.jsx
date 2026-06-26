@@ -1,7 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, TouchableOpacity, View, DeviceEventEmitter } from 'react-native';
+import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View } from 'react-native';
+
+let Audio = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch (e) {
+  console.warn('expo-av is not available in this environment:', e);
+}
 
 // Custom Tab Bar component with sliding circle transition
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -150,10 +157,11 @@ function CustomTabBar({ state, descriptors, navigation }) {
   );
 }
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import messaging from '@react-native-firebase/messaging';
-import { Alert } from 'react-native';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 export default function Layout() {
   useEffect(() => {
@@ -173,8 +181,21 @@ export default function Layout() {
           await saveFCMTokenToBackend(storedId, token);
         }
 
+        if (isExpoGo) {
+          console.log('Skipping FCM notification setup: running in Expo Go');
+          return;
+        }
+
+        let messagingModule;
+        try {
+          messagingModule = require('@react-native-firebase/messaging').default;
+        } catch (e) {
+          console.warn('Firebase Messaging module not found');
+          return;
+        }
+
         // Handle token refresh dynamically
-        unsubscribeTokenRefresh = messaging().onTokenRefresh(async (newToken) => {
+        unsubscribeTokenRefresh = messagingModule().onTokenRefresh(async (newToken) => {
           if (isMounted) {
             console.log('FCM Token Refreshed:', newToken);
             await saveFCMTokenToBackend(storedId, newToken);
@@ -182,18 +203,35 @@ export default function Layout() {
         });
 
         // Listen to messages received in the foreground
-        unsubscribeMessage = messaging().onMessage(async (remoteMessage) => {
+        unsubscribeMessage = messagingModule().onMessage(async (remoteMessage) => {
           if (isMounted) {
             console.log('Foreground Message received:', remoteMessage);
-            Alert.alert(
-              remoteMessage.notification?.title || 'New Order Alert',
-              remoteMessage.notification?.body || 'A new order has been received.'
-            );
+
+            try {
+              if (Audio) {
+                // Play the custom WAV sound file
+                const { sound } = await Audio.Sound.createAsync(
+                  require('../../../assets/ordernotification.wav')
+                );
+                await sound.playAsync();
+
+                // Unload sound from memory once it finishes playing to prevent memory leaks
+                sound.setOnPlaybackStatusUpdate((status) => {
+                  if (status.didJustFinish) {
+                    sound.unloadAsync();
+                  }
+                });
+              } else {
+                console.warn('Audio is not available, skipping custom notification sound.');
+              }
+            } catch (error) {
+              console.error('Failed to play custom notification sound:', error);
+            }
           }
         });
 
         // Handle when a notification is clicked while the app is in the background
-        unsubscribeNotificationOpened = messaging().onNotificationOpenedApp((remoteMessage) => {
+        unsubscribeNotificationOpened = messagingModule().onNotificationOpenedApp((remoteMessage) => {
           if (isMounted) {
             console.log('Notification caused app to open from background:', remoteMessage);
             router.push('/orders');
@@ -201,7 +239,7 @@ export default function Layout() {
         });
 
         // Check if the app was opened from a completely closed (quit) state via a notification
-        messaging()
+        messagingModule()
           .getInitialNotification()
           .then((remoteMessage) => {
             if (remoteMessage && isMounted) {

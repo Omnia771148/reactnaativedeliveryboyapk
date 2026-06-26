@@ -1,27 +1,30 @@
-import React, { useState } from "react";
+import { LoadingOverlay } from "@/components/loading-overlay";
+import { API_URL, fetchWithTimeout } from "@/constants/api";
+import { auth, storage } from "@/lib/firebase";
+import { FontAwesome, FontAwesome5, Ionicons, MaterialIcons } from "@expo/vector-icons";
+import Constants, { ExecutionEnvironment } from "expo-constants";
+import * as ImagePicker from "expo-image-picker";
+import { router } from "expo-router";
+import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { useState } from "react";
 import {
+  Alert,
+  Dimensions,
+  Keyboard,
+  Modal,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
-  Platform,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
-import { Ionicons, FontAwesome, MaterialIcons, FontAwesome5 } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
-import { storage, auth } from "@/lib/firebase";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
-import { API_URL, fetchWithTimeout } from "@/constants/api";
-import { LoadingOverlay } from "@/components/loading-overlay";
-import Constants, { ExecutionEnvironment } from "expo-constants";
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+const { height: SCREEN_HEIGHT } = Dimensions.get("screen");
 
 // Icon components mapped to Expo Vector Icons
 const UserIcon = ({ color = "#aaa" }) => (
@@ -90,6 +93,8 @@ export default function DeliveryBoySignup() {
   const [validationErrors, setValidationErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalMessage, setModalMessage] = useState("");
 
   const handleFileChange = async (fieldName) => {
     // Request permission to access system photo library
@@ -109,7 +114,7 @@ export default function DeliveryBoySignup() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
         const fileUri = asset.uri;
-        
+
         // Extract fileName or generate a default one
         let fileName = fileUri.substring(fileUri.lastIndexOf("/") + 1);
         if (!fileName) {
@@ -139,7 +144,7 @@ export default function DeliveryBoySignup() {
   const handleChange = (name, value) => {
     const updatedForm = { ...form, [name]: value };
     setForm(updatedForm);
-    
+
     // Create copy of errors and remove the current field's error
     let newErrors = { ...validationErrors };
     delete newErrors[name];
@@ -161,7 +166,7 @@ export default function DeliveryBoySignup() {
         delete newErrors.confirmAccountNumber;
       }
     }
-    
+
     setValidationErrors(newErrors);
   };
 
@@ -182,15 +187,17 @@ export default function DeliveryBoySignup() {
     }
 
     // Email validation
-    if (!form.email.endsWith("@gmail.com")) {
-      errors.email = "Email must end with @gmail.com";
+    if (!form.email || !form.email.trim()) {
+      errors.email = "Please enter your email.";
+    } else if (!form.email.trim().toLowerCase().endsWith("@gmail.com")) {
+      errors.email = "Email format should be @gmail.com";
     }
 
     // Password validation
     if (!form.password) {
       errors.password = "Password is required.";
-    } else if (form.password.length < 6) {
-      errors.password = "Password must be at least 6 characters.";
+    } else if (form.password.length < 4) {
+      errors.password = "Password must be at least 4 characters.";
     }
 
     if (!form.confirmPassword) {
@@ -212,11 +219,8 @@ export default function DeliveryBoySignup() {
       errors.confirmAccountNumber = "Account numbers do not match.";
     }
 
-    const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
-    if (!form.ifscCode) {
+    if (!form.ifscCode || !form.ifscCode.trim()) {
       errors.ifscCode = "IFSC code is required.";
-    } else if (!ifscRegex.test(form.ifscCode)) {
-      errors.ifscCode = "Invalid IFSC Code. (e.g., ABCD0123456)";
     }
 
     // Document Number validation
@@ -245,7 +249,8 @@ export default function DeliveryBoySignup() {
 
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
-      Alert.alert("Validation Error", "Please correct the highlighted errors before submitting.");
+      setModalMessage("Please enter all the details");
+      setModalVisible(true);
       return;
     }
 
@@ -271,7 +276,7 @@ export default function DeliveryBoySignup() {
             window.recaptchaVerifier = null;
           },
         });
-        
+
         const result = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
         setConfirmationResult(result);
         setIsOtpSent(true);
@@ -353,12 +358,12 @@ export default function DeliveryBoySignup() {
         const blob = await uriToBlob(fileObj.uri);
         const storageRef = ref(storage, `delivery_docs/${form.phone.trim()}/${key}`);
         await uploadBytes(storageRef, blob);
-        
+
         // Release the native blob resource once uploaded
         if (typeof blob.close === "function") {
           blob.close();
         }
-        
+
         const url = await getDownloadURL(storageRef);
         uploadResults[key] = url;
       }
@@ -396,11 +401,11 @@ export default function DeliveryBoySignup() {
 
   return (
     <View style={styles.container}>
-      {/* Split background matching CSS rules */}
-      <View style={StyleSheet.absoluteFill}>
-        <View style={styles.splitBackground}>
-          <View style={styles.leftBackground} />
-          <View style={styles.rightBackground} />
+      {/* Split background matching CSS rules - fixed height to prevent resize glitches */}
+      <View style={[StyleSheet.absoluteFill, { height: SCREEN_HEIGHT }]} pointerEvents="none" collapsable={false}>
+        <View style={styles.splitBackground} pointerEvents="none">
+          <View style={styles.leftBackground} pointerEvents="none" />
+          <View style={styles.rightBackground} pointerEvents="none" />
         </View>
       </View>
 
@@ -415,13 +420,17 @@ export default function DeliveryBoySignup() {
         </TouchableOpacity>
 
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={styles.scrollContainer}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          onScrollBeginDrag={Keyboard.dismiss}
         >
           {/* Welcome Header */}
           <View style={styles.welcomeHeaderContainer}>
             <View style={styles.welcomeHeader}>
-              <Text style={styles.welcomeTitle}>Welcome</Text>
+              <Text style={styles.welcomeTitle}> Welcome </Text>
             </View>
           </View>
 
@@ -583,7 +592,7 @@ export default function DeliveryBoySignup() {
                   placeholder="Enter your account number"
                   placeholderTextColor="#aaa"
                   keyboardType="numeric"
-                  style={[styles.customInput, styles.centerInput]}
+                  style={styles.customInput}
                   value={form.accountNumber}
                   onChangeText={(val) => {
                     const cleaned = val.replace(/\D/g, "");
@@ -606,7 +615,7 @@ export default function DeliveryBoySignup() {
                   placeholder="Confirm your account number"
                   placeholderTextColor="#aaa"
                   keyboardType="numeric"
-                  style={[styles.customInput, styles.centerInput]}
+                  style={styles.customInput}
                   value={form.confirmAccountNumber}
                   onChangeText={(val) => {
                     const cleaned = val.replace(/\D/g, "");
@@ -630,7 +639,7 @@ export default function DeliveryBoySignup() {
                   placeholderTextColor="#aaa"
                   autoCapitalize="characters"
                   maxLength={11}
-                  style={[styles.customInput, styles.centerInput]}
+                  style={styles.customInput}
                   value={form.ifscCode}
                   onChangeText={(val) => {
                     const cleaned = val.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -824,6 +833,34 @@ export default function DeliveryBoySignup() {
       </SafeAreaView>
       <View id="recaptcha-container" />
 
+      {/* Custom Error Modal matching the screenshot layout */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalIconCircle}>
+              <Ionicons
+                name="close-outline"
+                size={48}
+                color="#FFFFFF"
+              />
+            </View>
+            <Text style={styles.modalMessageText}>{modalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              activeOpacity={0.8}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Loading Overlay placed at the bottom so it renders on top of all sibling components */}
       <LoadingOverlay visible={isSubmitting || isSendingOtp} />
     </View>
@@ -859,14 +896,13 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 5,
     zIndex: 100,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContainer: {
+    flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: 24,
     paddingTop: 80,
@@ -880,16 +916,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 50,
     paddingVertical: 12,
     borderRadius: 35,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 4,
   },
   welcomeTitle: {
-    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", // Cursive fallback
-    fontSize: 32,
-    fontWeight: "bold",
+    fontFamily: "CursiveScript",
+    fontSize: 50,
+    fontWeight: "normal",
+    fontStyle: "normal",
+    paddingHorizontal: 20,
+    overflow: "visible",
     color: "#333",
     textAlign: "center",
   },
@@ -905,11 +939,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     height: 54,
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 4,
   },
   inputIcon: {
     marginRight: 14,
@@ -962,11 +991,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 35,
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 4,
   },
   sectionLabelText: {
     fontSize: 15,
@@ -1025,11 +1049,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 5,
   },
   signupBtnText: {
     color: "#000",
@@ -1056,11 +1075,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 340,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 15,
-    elevation: 6,
   },
   otpTitle: {
     fontSize: 22,
@@ -1101,5 +1115,52 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     height: "100%",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    width: "85%",
+    maxWidth: 320,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 30,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: "center",
+  },
+  modalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#E55B49", // Coral red
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  modalMessageText: {
+    fontSize: 22,
+    color: "#000000",
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 30,
+    marginBottom: 28,
+    paddingHorizontal: 8,
+  },
+  modalButton: {
+    backgroundColor: "#000000", // Black button
+    width: "90%",
+    height: 52,
+    borderRadius: 26,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalButtonText: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "700",
   },
 });

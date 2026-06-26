@@ -1,12 +1,19 @@
+import { LoadingOverlay } from '@/components/loading-overlay';
+import { API_URL } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { LoadingOverlay } from '@/components/loading-overlay';
 import { Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { API_URL } from '@/constants/api';
+
+let Audio = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch (e) {
+  console.warn('expo-av is not available in this environment:', e);
+}
 
 const customAlert = (title, message, buttons = []) => {
   if (Platform.OS === 'web') {
@@ -51,6 +58,28 @@ export default function OrdersScreen() {
   const [hasActiveOrder, setHasActiveOrder] = useState(false);
 
   const bounceAnim = useRef(new Animated.Value(0)).current;
+  const ordersRef = useRef([]);
+  const isFirstFetch = useRef(true);
+
+  const playSound = async () => {
+    if (!Audio) {
+      console.warn('Audio is not available, skipping playSound.');
+      return;
+    }
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('@/assets/ordernotification.wav'),
+        { shouldPlay: true }
+      );
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync().catch((err) => console.error('Error unloading sound:', err));
+        }
+      });
+    } catch (error) {
+      console.error('Failed to play order notification sound:', error);
+    }
+  };
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -117,7 +146,10 @@ export default function OrdersScreen() {
       }
       setHasActiveOrder(hasActive);
 
-      const response = await fetch(`${API_URL}/api/acceptedorders`);
+      const fetchUrl = storedId
+        ? `${API_URL}/api/acceptedorders?deliveryBoyId=${storedId}`
+        : `${API_URL}/api/acceptedorders`;
+      const response = await fetch(fetchUrl);
       if (response.ok) {
         let data = [];
         try {
@@ -126,15 +158,32 @@ export default function OrdersScreen() {
         } catch (_e) {
           console.error('Failed to parse accepted orders JSON');
         }
-        // Filter out orders that have already been rejected by this user
+        // Filter out orders that have already been rejected by this user or accepted by another delivery boy
         let activeOrders = storedId
-          ? (Array.isArray(data) ? data.filter(order => !order.rejectedBy || !order.rejectedBy.includes(storedId)) : [])
+          ? (Array.isArray(data) ? data.filter(order => {
+            const notRejected = !order.rejectedBy || !order.rejectedBy.includes(storedId);
+            // Show order if it is unassigned OR assigned to this delivery boy specifically
+            const isAvailableOrMine = !order.deliveryBoyId || order.deliveryBoyId === storedId;
+            return notRejected && isAvailableOrMine;
+          }) : [])
           : data;
 
         // Filter out the order that the current delivery boy has already accepted
         if (currentActiveOrderId) {
-          activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId);
+          activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
         }
+
+        // Compare fetched orders with previously stored orders
+        const prevOrderIds = ordersRef.current.map(o => o._id || o.orderId);
+        const currentOrderIds = activeOrders.map(o => o._id || o.orderId);
+        const hasNewOrder = currentOrderIds.some(id => !prevOrderIds.includes(id));
+
+        if (hasNewOrder) {
+          playSound();
+        }
+
+        ordersRef.current = activeOrders;
+        isFirstFetch.current = false;
 
         setOrders(activeOrders);
       } else {
@@ -149,6 +198,20 @@ export default function OrdersScreen() {
   };
 
   useEffect(() => {
+    const setupAudio = async () => {
+      if (!Audio) return;
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,
+        });
+      } catch (err) {
+        console.warn('Failed to setup audio mode:', err);
+      }
+    };
+    setupAudio();
+
     const loadInitialStatus = async () => {
       try {
         const storedActive = await AsyncStorage.getItem('isActive');
@@ -289,7 +352,27 @@ export default function OrdersScreen() {
         fetchOrders();
         router.replace('/liveorders');
       } else {
-        if (response.status === 409 || (data.message && data.message.toLowerCase().includes('already accepted'))) {
+        // Double check if the order has been accepted by someone else in case of error (500, 409, etc.)
+        let isAlreadyTaken = false;
+        try {
+          const checkRes = await fetch(`${API_URL}/api/acceptedorders`);
+          if (checkRes.ok) {
+            const checkData = await checkRes.json();
+            const matchingOrder = Array.isArray(checkData) ? checkData.find(o => o._id === order._id) : null;
+            if (matchingOrder && matchingOrder.deliveryBoyId && matchingOrder.deliveryBoyId !== deliveryBoyId) {
+              isAlreadyTaken = true;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to verify if order is taken:", e);
+        }
+
+        if (
+          response.status === 409 ||
+          response.status === 500 ||
+          isAlreadyTaken ||
+          (data.message && data.message.toLowerCase().includes('already accepted'))
+        ) {
           setErrorModalMessage("sorry the order was already accepted by other delivery boy\n\nbetter luck next time");
           setErrorModalVisible(true);
         } else {

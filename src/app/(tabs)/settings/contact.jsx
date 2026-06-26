@@ -54,6 +54,7 @@ export default function ContactScreen() {
       <SafeAreaView style={styles.safeArea}>
         
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           onScroll={handleScroll}
@@ -201,7 +202,11 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 44, // Align center helper spacer matching backButton width
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
+    flexGrow: 1,
     paddingBottom: 100, // Safe padding above bottom navigation bar
   },
   detailsCard: {

@@ -137,7 +137,7 @@ export default function HomeScreen() {
       } else {
         if (res.data.errorType === 'NO_ACCOUNT') {
           setModalType('no_account');
-          setModalMessage('no account found');
+          setModalMessage('No Account Found');
         } else {
           setModalType('error');
           setModalMessage(res.data.message || 'incorrect id and password');
@@ -265,11 +265,9 @@ export default function HomeScreen() {
               style={styles.modalButton}
               activeOpacity={0.8}
               onPress={() => {
+                setModalVisible(false);
                 if (modalType === 'no_account') {
-                  // Action will be specified later by user
-                  setModalVisible(false);
-                } else {
-                  setModalVisible(false);
+                  router.push('/signup');
                 }
               }}
             >
@@ -326,11 +324,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 56,
     paddingVertical: 18,
     borderRadius: 35,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
   },
   logoText: {
     fontSize: 28,
@@ -353,11 +346,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 14,
     borderRadius: 35,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
     gap: 14,
   },
   input: {
@@ -384,11 +372,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 54,
     paddingVertical: 16,
     borderRadius: 35,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 6,
   },
   disabledButton: {
     opacity: 0.6,
@@ -463,11 +446,6 @@ const styles = StyleSheet.create({
     paddingVertical: 36,
     paddingHorizontal: 24,
     alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
   },
   modalIconCircle: {
     width: 80,
@@ -495,11 +473,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   modalButtonText: {
     color: '#FFFFFF',
