@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     marginHorizontal: 20,
     paddingHorizontal: 20,
     paddingVertical: 16,
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
   },
   profilePhone: {
     fontSize: 15,
-    color: '#8E8882',
+    color: '#2A3037',
     fontWeight: '500',
   },
   buttonsContainer: {

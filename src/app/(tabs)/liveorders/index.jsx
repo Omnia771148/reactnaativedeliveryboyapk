@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Linking, TextInput, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Image } from 'expo-image';
+import { BrandHeader } from '@/components/brand-header';
+import { LoadingOverlay } from '@/components/loading-overlay';
+import { API_URL } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
-import { LoadingOverlay } from '@/components/loading-overlay';
-import { API_URL } from '@/constants/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LiveOrdersScreen() {
   const navigation = useNavigation();
@@ -14,7 +14,7 @@ export default function LiveOrdersScreen() {
   const [activeOrder, setActiveOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  
+
   // OTP entry state (5 separate boxes)
   const [otp, setOtp] = useState(['', '', '', '', '']);
   const [focusedIndex, setFocusedIndex] = useState(null);
@@ -96,7 +96,7 @@ export default function LiveOrdersScreen() {
 
   const handleOpenMap = async () => {
     if (!activeOrder) return;
-    
+
     let lat = activeOrder.restaurantLocation?.lat;
     let lng = activeOrder.restaurantLocation?.lng;
     let url = activeOrder.rest;
@@ -189,20 +189,21 @@ export default function LiveOrdersScreen() {
   };
 
   const handleOtpChange = (text, index) => {
-    if (text === '') {
-      const newOtp = [...otp];
+    // Alphanumeric filters for OTP inputs
+    const cleanText = text.replace(/[^a-zA-Z0-9]/g, '');
+    const newOtp = [...otp];
+    
+    if (cleanText === '') {
       newOtp[index] = '';
       setOtp(newOtp);
       return;
     }
-    // Alphanumeric filters for OTP inputs
-    const cleanText = text.replace(/[^a-zA-Z0-9]/g, '');
-    const newOtp = [...otp];
+    
     newOtp[index] = cleanText.slice(-1); // Only store the last character typed
     setOtp(newOtp);
 
     // Auto-focus shifting logic
-    if (cleanText && index < 4) {
+    if (index < 4 && inputRefs[index + 1]?.current) {
       inputRefs[index + 1].current.focus();
     }
   };
@@ -211,10 +212,20 @@ export default function LiveOrdersScreen() {
     // Backward focus shifting on backspace
     if (e.nativeEvent.key === 'Backspace') {
       const newOtp = [...otp];
-      newOtp[index] = ''; // Clear current cell
-      setOtp(newOtp);
-      if (index > 0) {
-        inputRefs[index - 1].current.focus(); // Shift focus back immediately
+      if (otp[index] === '') {
+        if (index > 0) {
+          newOtp[index - 1] = '';
+          setOtp(newOtp);
+          if (inputRefs[index - 1]?.current) {
+            inputRefs[index - 1].current.focus();
+          }
+        }
+      } else {
+        newOtp[index] = '';
+        setOtp(newOtp);
+        if (index > 0 && inputRefs[index - 1]?.current) {
+          inputRefs[index - 1].current.focus();
+        }
       }
     }
   };
@@ -272,6 +283,7 @@ export default function LiveOrdersScreen() {
     if (modalType === 'success') {
       setOtp(['', '', '', '', '']); // Clear input
       await fetchActiveOrder(userid); // Returns to empty state
+      router.replace('/homepage');
     } else {
       // Focus back on first OTP box
       if (inputRefs[0]?.current) {
@@ -290,33 +302,21 @@ export default function LiveOrdersScreen() {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         {/* Custom Header Bar */}
-        <View style={styles.headerBar}>
-          <View style={styles.headerCircle}>
-            <Image
-              source={require('@/assets/images/logo-L.png')}
-              style={styles.headerLogo}
-              contentFit="contain"
-            />
-          </View>
-          <View style={styles.headerTitleContainer}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY</Text>
-          </View>
-          <View style={styles.headerSpacer} />
-        </View>
+        <BrandHeader />
 
         {activeOrder ? (
-          <ScrollView 
+          <ScrollView
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
             {isOutForDelivery ? (
               // Phase 2: Customer Details & OTP Verification UI (Out for Delivery state)
               <View style={styles.mainCard}>
-                
+
                 {/* CUSTOMER DETAILS BLOCK */}
                 <View style={[styles.block, styles.detailsBlock]}>
                   <Text style={styles.blockLabel}>Customer Details</Text>
-                  
+
                   <View style={styles.detailTextRow}>
                     <Text style={styles.detailTextLabel}>Order ID:</Text>
                     <Text style={styles.detailTextVal}>{activeOrder.orderId || 'N/A'}</Text>
@@ -365,7 +365,7 @@ export default function LiveOrdersScreen() {
                 {/* CUSTOMER OTP BLOCK */}
                 <View style={styles.block}>
                   <Text style={styles.otpSectionTitle}>Customer OTP</Text>
-                  
+
                   <View style={styles.otpRow}>
                     {otp.map((digit, index) => (
                       <TextInput
@@ -381,8 +381,8 @@ export default function LiveOrdersScreen() {
                         onKeyPress={(e) => handleKeyPress(e, index)}
                         onFocus={() => setFocusedIndex(index)}
                         onBlur={() => setFocusedIndex(null)}
-                        placeholder="-"
-                        placeholderTextColor="#C4BEB3"
+                        placeholder=""
+                        keyboardType="default"
                         autoCapitalize="none"
                         autoCorrect={false}
                         selectTextOnFocus
@@ -506,10 +506,10 @@ export default function LiveOrdersScreen() {
               styles.modalIconCircle,
               modalType === 'success' ? styles.modalIconCircleSuccess : styles.modalIconCircleError
             ]}>
-              <Ionicons 
-                name={modalType === 'success' ? "checkmark" : "close"} 
-                size={36} 
-                color="#FFFFFF" 
+              <Ionicons
+                name={modalType === 'success' ? "checkmark" : "close"}
+                size={36}
+                color="#FFFFFF"
               />
             </View>
             <Text style={styles.modalMessageText}>
@@ -542,50 +542,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#DCD5C7', // Sand/Beige header bar background
-    height: 54,
-    borderRadius: 27,
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  headerCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerLogo: {
-    width: 24,
-    height: 24,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    fontStyle: 'italic',
-    color: '#2A3037',
-    letterSpacing: 2,
-    paddingHorizontal: 8,
-  },
-  headerSpacer: {
-    width: 36,
-  },
+
   loaderContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -776,7 +733,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-  
+
   // Phase 2 styles
   detailsBlock: {
     alignItems: 'stretch',
@@ -856,22 +813,20 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   otpInput: {
-    width: 48,
+    width: 44,
     height: 48,
-    borderWidth: 1.5,
-    borderColor: '#DCD5C7',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    fontSize: 18,
+    borderBottomWidth: 2.5,
+    borderBottomColor: '#B58A55',
+    backgroundColor: 'transparent',
+    fontSize: 24,
     fontWeight: '700',
     textAlign: 'center',
-    color: '#000000',
+    color: '#2A3037',
     padding: 0,
-    textAlignVertical: 'center',
   },
   otpInputFocused: {
-    borderColor: '#2E7D32', // Emerald green border on focus
-    borderWidth: 2,
+    borderBottomColor: '#2E7D32',
+    borderBottomWidth: 3,
   },
   completeButton: {
     backgroundColor: '#2E7D32', // Emerald green

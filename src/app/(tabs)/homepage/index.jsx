@@ -1,13 +1,14 @@
+import { BrandHeader } from '@/components/brand-header';
 import { API_URL } from '@/constants/api';
 import { styles } from '@/styles/homepage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { router, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomepageScreen() {
+  const navigation = useNavigation();
   const [userid, setUserid] = useState(null);
   const [isActive, setIsActive] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,7 @@ export default function HomepageScreen() {
   });
 
   // Fetch delivery boy completed orders and earnings stats from backend API
-  const fetchEarnings = async (id) => {
+  const fetchEarnings = useCallback(async (id) => {
     try {
       const response = await fetch(`${API_URL}/api/deliveryboy/${id}/earnings`);
       if (response.ok) {
@@ -38,47 +39,92 @@ export default function HomepageScreen() {
     } catch (error) {
       console.error('Error fetching earnings:', error);
     }
-  };
+  }, []);
+
+  // Fetch both active status and latest earnings statistics
+  const fetchUserStatusAndEarnings = useCallback(async (id) => {
+    const userIdToUse = id || userid;
+    if (!userIdToUse) return;
+
+    try {
+      // Fetch active status from backend
+      const response = await fetch(`${API_URL}/api/users/${userIdToUse}`);
+      if (response.ok) {
+        let data = {};
+        try {
+          const text = await response.text();
+          data = JSON.parse(text);
+        } catch (_e) {
+          console.error('Failed to parse status response');
+        }
+        setIsActive(!!data.isActive);
+        await AsyncStorage.setItem('isActive', String(!!data.isActive));
+      }
+
+      // Fetch latest earnings statistics
+      await fetchEarnings(userIdToUse);
+    } catch (error) {
+      console.error('Error fetching status and earnings:', error);
+    }
+  }, [userid, fetchEarnings]);
 
   // Animated position of the sliding circle (between 8 for inactive and 138 for active)
   const animatedValue = useRef(new Animated.Value(8)).current;
 
   // Load user session and fetch latest status from DB on mount
   useEffect(() => {
-    const fetchUserStatus = async () => {
+    const loadSessionAndData = async () => {
       try {
         const storedId = await AsyncStorage.getItem('userid');
-        if (!storedId) {
-          setLoading(false);
-          return;
+        if (storedId) {
+          setUserid(storedId);
+          await fetchUserStatusAndEarnings(storedId);
         }
-        setUserid(storedId);
-
-        // Fetch active status from backend
-        const response = await fetch(`${API_URL}/api/users/${storedId}`);
-        if (response.ok) {
-          let data = {};
-          try {
-            const text = await response.text();
-            data = JSON.parse(text);
-          } catch (e) {
-            console.error('Failed to parse status response:', e);
-          }
-          setIsActive(!!data.isActive);
-          await AsyncStorage.setItem('isActive', String(!!data.isActive));
-        }
-
-        // Fetch latest earnings statistics
-        await fetchEarnings(storedId);
       } catch (error) {
-        console.error('Error fetching status:', error);
+        console.error('Error loading session:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUserStatus();
-  }, []);
+    loadSessionAndData();
+  }, [fetchUserStatusAndEarnings]);
+
+  // Polling and focus listener to keep status & earnings updated
+  useEffect(() => {
+    // 1. Immediately refresh when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (userid) {
+        fetchUserStatusAndEarnings(userid);
+      } else {
+        AsyncStorage.getItem('userid').then((storedId) => {
+          if (storedId) {
+            setUserid(storedId);
+            fetchUserStatusAndEarnings(storedId);
+          }
+        });
+      }
+    });
+
+    // 2. Poll every 5 seconds while component is mounted
+    const intervalId = setInterval(() => {
+      if (userid) {
+        fetchUserStatusAndEarnings(userid);
+      } else {
+        AsyncStorage.getItem('userid').then((storedId) => {
+          if (storedId) {
+            setUserid(storedId);
+            fetchUserStatusAndEarnings(storedId);
+          }
+        });
+      }
+    }, 5000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
+    };
+  }, [navigation, userid, fetchUserStatusAndEarnings]);
 
   // Trigger sliding animation when active state changes
   useEffect(() => {
@@ -87,7 +133,7 @@ export default function HomepageScreen() {
       duration: 250,
       useNativeDriver: true,
     }).start();
-  }, [isActive]);
+  }, [isActive, animatedValue]);
 
   // Sync state update with MongoDB backend API
   const toggleActiveStatus = async () => {
@@ -111,7 +157,7 @@ export default function HomepageScreen() {
       try {
         const text = await response.text();
         data = JSON.parse(text);
-      } catch (e) {
+      } catch (_e) {
         data = { message: 'Invalid response from server. Check if backend is running.' };
       }
 
@@ -150,22 +196,7 @@ export default function HomepageScreen() {
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         {/* Custom Header Bar */}
-        <View style={styles.headerBar}>
-          {/* Left white circle containing the golden logo */}
-          <View style={styles.headerCircle}>
-            <Image
-              source={require('@/assets/images/logo-L.png')}
-              style={styles.headerLogo}
-              contentFit="contain"
-            />
-          </View>
-          {/* Centered Brand Title */}
-          <View style={styles.headerTitleContainer}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY </Text>
-          </View>
-          {/* Empty spacer to balance layout */}
-          <View style={styles.headerSpacer} />
-        </View>
+        <BrandHeader />
 
         {/* Small spacing between Header and Selector */}
         <View style={styles.gap} />
@@ -190,43 +221,39 @@ export default function HomepageScreen() {
               ]}
             />
 
-            {loading || updating ? (
-              <View style={styles.buttonLoaderContainer}>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              </View>
-            ) : (
-              <>
-                {/* OPEN Text */}
-                <Animated.Text
-                  style={[
-                    styles.toggleText,
-                    styles.openText,
-                    { opacity: openOpacity }
-                  ]}
-                >
-                  OPEN
-                </Animated.Text>
+            {/* OPEN Text */}
+            <Animated.Text
+              style={[
+                styles.toggleText,
+                styles.openText,
+                { opacity: openOpacity }
+              ]}
+            >
+              OPEN
+            </Animated.Text>
 
-                {/* CLOSED Text */}
-                <Animated.Text
-                  style={[
-                    styles.toggleText,
-                    styles.closedText,
-                    { opacity: closedOpacity }
-                  ]}
-                >
-                  CLOSED
-                </Animated.Text>
+            {/* CLOSED Text */}
+            <Animated.Text
+              style={[
+                styles.toggleText,
+                styles.closedText,
+                { opacity: closedOpacity }
+              ]}
+            >
+              CLOSED
+            </Animated.Text>
 
-                {/* Sliding White Circle */}
-                <Animated.View
-                  style={[
-                    styles.toggleCircle,
-                    { transform: [{ translateX: animatedValue }] }
-                  ]}
-                />
-              </>
-            )}
+            {/* Sliding White Circle */}
+            <Animated.View
+              style={[
+                styles.toggleCircle,
+                { transform: [{ translateX: animatedValue }] }
+              ]}
+            >
+              {(loading || updating) && (
+                <ActivityIndicator size="small" color="#2A3037" />
+              )}
+            </Animated.View>
           </TouchableOpacity>
         </View>
 

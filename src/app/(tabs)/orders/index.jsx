@@ -1,8 +1,8 @@
+import { BrandHeader } from '@/components/brand-header';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Image } from 'expo-image';
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -514,19 +514,7 @@ export default function OrdersScreen() {
       <LoadingOverlay visible={updating} />
       <SafeAreaView style={styles.safeArea}>
         {/* Custom Header Bar */}
-        <View style={styles.headerBar}>
-          <View style={styles.headerCircle}>
-            <Image
-              source={require('@/assets/images/logo-L.png')}
-              style={styles.headerLogo}
-              contentFit="contain"
-            />
-          </View>
-          <View style={styles.headerTitleContainer}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY</Text>
-          </View>
-          <View style={styles.headerSpacer} />
-        </View>
+        <BrandHeader />
 
         {isActive && hasActiveOrder && (
           <View style={styles.warningBanner}>
@@ -633,50 +621,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#DCD5C7', // Sand/Beige header bar background
-    height: 54,
-    borderRadius: 27,
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 16,
-    paddingHorizontal: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  headerCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#000000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerLogo: {
-    width: 24,
-    height: 24,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    fontStyle: 'italic',
-    color: '#2A3037',
-    letterSpacing: 2,
-    paddingHorizontal: 8,
-  },
-  headerSpacer: {
-    width: 36,
-  },
+
   loaderContainer: {
     flex: 1,
     justifyContent: 'center',

@@ -8,50 +8,7 @@ export const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  headerBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#DCD5C7', // Sand/Beige header bar background
-    height: 54,
-    borderRadius: 27,
-    marginHorizontal: 16,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  headerCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#000000', // Black circle for golden logo background
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerLogo: {
-    width: 24,
-    height: 24,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 36, // Offsets the left circle width to ensure exact centering
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    fontStyle: 'italic',
-    color: '#2A3037', // Dark slate gray/blue color
-    letterSpacing: 2,
-    paddingRight: 6,
-  },
-  headerSpacer: {
-    // Spacer for flex layout balancing
-  },
+
   gap: {
     height: 16, // Small gap directly under the heading bar
   },
@@ -93,6 +50,8 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     top: 7, // Vertically centered (58 height - 44 height) / 2
     left: 0, // Explicit left start for consistent horizontal sliding
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   toggleText: {
     color: '#FFFFFF',
