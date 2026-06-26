@@ -47,6 +47,7 @@ export const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#2A3037', // Dark slate gray/blue color
     letterSpacing: 2,
+    paddingRight: 6,
   },
   headerSpacer: {
     // Spacer for flex layout balancing

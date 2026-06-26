@@ -91,7 +91,7 @@ export default function ContactScreen() {
               <View style={styles.iconContainer}>
                 <Ionicons name="call" size={22} color="#000000" />
               </View>
-              <Text style={styles.valueText}>707610235</Text>
+              <Text style={styles.valueText}>7207610235</Text>
             </TouchableOpacity>
 
             {/* Email */}

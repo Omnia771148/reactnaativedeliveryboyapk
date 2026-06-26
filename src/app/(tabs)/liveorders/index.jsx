@@ -17,6 +17,7 @@ export default function LiveOrdersScreen() {
   
   // OTP entry state (5 separate boxes)
   const [otp, setOtp] = useState(['', '', '', '', '']);
+  const [focusedIndex, setFocusedIndex] = useState(null);
   const inputRefs = [useRef(null), useRef(null), useRef(null), useRef(null), useRef(null)];
 
   // Custom alert modal states
@@ -117,6 +118,39 @@ export default function LiveOrdersScreen() {
     }
   };
 
+  const handleOpenCustomerMap = async () => {
+    if (!activeOrder) return;
+
+    let lat = null;
+    let lng = null;
+
+    if (activeOrder.location?.lat && activeOrder.location?.lng) {
+      lat = activeOrder.location.lat;
+      lng = activeOrder.location.lng;
+    } else if (activeOrder.lat && activeOrder.lng) {
+      lat = activeOrder.lat;
+      lng = activeOrder.lng;
+    }
+
+    let url = activeOrder.location?.googleMapsUrl || activeOrder.googleMapsUrl;
+
+    if (lat && lng) {
+      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    }
+
+    if (!url) {
+      Alert.alert('Error', 'Google Map link or coordinates are not available for customer');
+      return;
+    }
+
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert('Error', 'Cannot open the Google Map link');
+      console.error('Failed to open map URL:', error);
+    }
+  };
+
   const handlePickupOrder = async () => {
     if (!activeOrder || updating) return;
 
@@ -155,6 +189,12 @@ export default function LiveOrdersScreen() {
   };
 
   const handleOtpChange = (text, index) => {
+    if (text === '') {
+      const newOtp = [...otp];
+      newOtp[index] = '';
+      setOtp(newOtp);
+      return;
+    }
     // Alphanumeric filters for OTP inputs
     const cleanText = text.replace(/[^a-zA-Z0-9]/g, '');
     const newOtp = [...otp];
@@ -169,8 +209,13 @@ export default function LiveOrdersScreen() {
 
   const handleKeyPress = (e, index) => {
     // Backward focus shifting on backspace
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      inputRefs[index - 1].current.focus();
+    if (e.nativeEvent.key === 'Backspace') {
+      const newOtp = [...otp];
+      newOtp[index] = ''; // Clear current cell
+      setOtp(newOtp);
+      if (index > 0) {
+        inputRefs[index - 1].current.focus(); // Shift focus back immediately
+      }
     }
   };
 
@@ -254,7 +299,7 @@ export default function LiveOrdersScreen() {
             />
           </View>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>LEEVON</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
@@ -273,6 +318,11 @@ export default function LiveOrdersScreen() {
                   <Text style={styles.blockLabel}>Customer Details</Text>
                   
                   <View style={styles.detailTextRow}>
+                    <Text style={styles.detailTextLabel}>Order ID:</Text>
+                    <Text style={styles.detailTextVal}>{activeOrder.orderId || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.detailTextRow}>
                     <Text style={styles.detailTextLabel}>Name:</Text>
                     <Text style={styles.detailTextVal}>{activeOrder.userName || 'N/A'}</Text>
                   </View>
@@ -284,7 +334,7 @@ export default function LiveOrdersScreen() {
                       activeOpacity={0.8}
                       onPress={() => Linking.openURL(`tel:${activeOrder.userPhone}`)}
                     >
-                      <Ionicons name="call" size={14} color="#E55B49" style={styles.phoneIcon} />
+                      <Ionicons name="call" size={14} color="#FFFFFF" style={styles.phoneIcon} />
                       <Text style={styles.phonePillText}>{activeOrder.userPhone || 'N/A'}</Text>
                     </TouchableOpacity>
                   </View>
@@ -298,6 +348,18 @@ export default function LiveOrdersScreen() {
                       {activeOrder.deliveryAddress || 'N/A'}
                     </Text>
                   </View>
+
+                  <View style={styles.detailTextRow}>
+                    <Text style={styles.detailTextLabel}>Location:</Text>
+                    <TouchableOpacity
+                      style={styles.locationPillButton}
+                      activeOpacity={0.8}
+                      onPress={handleOpenCustomerMap}
+                    >
+                      <Ionicons name="location" size={14} color="#FFFFFF" />
+                      <Text style={styles.locationPillText}>VIEW IN MAP</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* CUSTOMER OTP BLOCK */}
@@ -309,11 +371,16 @@ export default function LiveOrdersScreen() {
                       <TextInput
                         key={index}
                         ref={inputRefs[index]}
-                        style={styles.otpInput}
+                        style={[
+                          styles.otpInput,
+                          focusedIndex === index && styles.otpInputFocused
+                        ]}
                         maxLength={1}
                         value={digit}
                         onChangeText={(text) => handleOtpChange(text, index)}
                         onKeyPress={(e) => handleKeyPress(e, index)}
+                        onFocus={() => setFocusedIndex(index)}
+                        onBlur={() => setFocusedIndex(null)}
                         placeholder="-"
                         placeholderTextColor="#C4BEB3"
                         autoCapitalize="none"
@@ -507,7 +574,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 36,
   },
   headerTitle: {
     fontSize: 22,
@@ -515,8 +581,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#2A3037',
     letterSpacing: 2,
+    paddingHorizontal: 8,
   },
-  headerSpacer: {},
+  headerSpacer: {
+    width: 36,
+  },
   loaderContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -722,7 +791,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#8E8882',
-    width: 70,
+    width: 95,
   },
   detailTextVal: {
     fontSize: 15,
@@ -731,7 +800,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   phonePillButton: {
-    backgroundColor: '#2EBD6B', // Soft green background
+    backgroundColor: '#2E7D32', // Matches location button green color
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -752,6 +821,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  locationPillButton: {
+    backgroundColor: '#2E7D32', // Green map button color
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    gap: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  locationPillText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   otpSectionTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -768,16 +856,22 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   otpInput: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderWidth: 1.5,
     borderColor: '#DCD5C7',
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'center',
     color: '#000000',
+    padding: 0,
+    textAlignVertical: 'center',
+  },
+  otpInputFocused: {
+    borderColor: '#2E7D32', // Emerald green border on focus
+    borderWidth: 2,
   },
   completeButton: {
     backgroundColor: '#2E7D32', // Emerald green

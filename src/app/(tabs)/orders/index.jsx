@@ -523,7 +523,7 @@ export default function OrdersScreen() {
             />
           </View>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>LEEVON</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
@@ -665,7 +665,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 36,
   },
   headerTitle: {
     fontSize: 22,
@@ -673,8 +672,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: '#2A3037',
     letterSpacing: 2,
+    paddingHorizontal: 8,
   },
-  headerSpacer: {},
+  headerSpacer: {
+    width: 36,
+  },
   loaderContainer: {
     flex: 1,
     justifyContent: 'center',

@@ -1,11 +1,11 @@
+import { API_URL } from '@/constants/api';
 import { styles } from '@/styles/homepage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { API_URL } from '@/constants/api';
 
 export default function HomepageScreen() {
   const [userid, setUserid] = useState(null);
@@ -161,7 +161,7 @@ export default function HomepageScreen() {
           </View>
           {/* Centered Brand Title */}
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>LEEVON</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.headerTitle}>LEEVON DELIVERY </Text>
           </View>
           {/* Empty spacer to balance layout */}
           <View style={styles.headerSpacer} />

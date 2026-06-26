@@ -168,7 +168,7 @@ export default function HomeScreen() {
         <View style={styles.contentContainer}>
           {/* Header Title: LEEVON */}
           <View style={styles.logoContainer}>
-            <Text style={styles.logoText}>LEEVON</Text>
+            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.logoText}>LEEVON DELIVERY</Text>
           </View>
 
           {/* Form Inputs Container */}
