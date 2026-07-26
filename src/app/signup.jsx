@@ -7,11 +7,12 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Alert,
   Dimensions,
-  Keyboard,
+  KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -97,6 +98,23 @@ export default function DeliveryBoySignup() {
   const [modalMessage, setModalMessage] = useState("");
   const [modalType, setModalType] = useState("error"); // 'success' or 'error'
   const [successRedirect, setSuccessRedirect] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [incorrectAttempts, setIncorrectAttempts] = useState(0);
+  const [isAccepted, setIsAccepted] = useState(false);
+
+  const handleOpenURL = async (url) => {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Error", "Cannot open URL: " + url);
+      }
+    } catch (error) {
+      console.error("An error occurred opening the URL: ", error);
+      Alert.alert("Error", "Unable to open link");
+    }
+  };
 
   const handleModalClose = () => {
     setModalVisible(false);
@@ -105,6 +123,43 @@ export default function DeliveryBoySignup() {
       router.replace("/");
     }
   };
+
+  // Handle resend countdown timer (30s)
+  useEffect(() => {
+    let interval = null;
+    if (isOtpSent && resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (resendTimer === 0 && interval) {
+      clearInterval(interval);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isOtpSent, resendTimer]);
+
+  // Clear any stale firebase auth session when entering signup screen
+  useEffect(() => {
+    const clearSession = async () => {
+      if (Platform.OS !== "web" && !isExpoGo) {
+        try {
+          const nativeAuth = require("@react-native-firebase/auth").default;
+          await nativeAuth().signOut();
+        } catch (err) {
+          console.error("Error signing out native auth:", err);
+        }
+      } else {
+        try {
+          const { signOut } = require("firebase/auth");
+          await signOut(auth);
+        } catch (err) {
+          console.error("Error signing out web auth:", err);
+        }
+      }
+    };
+    clearSession();
+  }, []);
 
   const handleFileChange = async (fieldName) => {
     // Request permission to access system photo library
@@ -180,7 +235,14 @@ export default function DeliveryBoySignup() {
     setValidationErrors(newErrors);
   };
 
-  const sendOtp = async () => {
+  const sendOtp = async (forceResend = false) => {
+    if (!isAccepted && !forceResend) {
+      setModalMessage("Please accept the Terms & Conditions and Privacy Policy");
+      setModalType("error");
+      setModalVisible(true);
+      return;
+    }
+
     setErrorMessage("");
     setValidationErrors({});
 
@@ -291,6 +353,7 @@ export default function DeliveryBoySignup() {
         const result = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
         setConfirmationResult(result);
         setIsOtpSent(true);
+        setResendTimer(30);
         setModalMessage("OTP has been sent to your phone number via SMS.");
         setModalType("success");
         setModalVisible(true);
@@ -300,7 +363,7 @@ export default function DeliveryBoySignup() {
         // we simulate the OTP verification for testing purposes.
         const mockConfirmationResult = {
           confirm: async (verificationCode) => {
-            if (verificationCode === "123456" || verificationCode === otp) {
+            if (verificationCode === "123456") {
               return {
                 user: {
                   uid: "mock-uid-" + Math.random().toString(36).substring(7),
@@ -314,15 +377,17 @@ export default function DeliveryBoySignup() {
         };
         setConfirmationResult(mockConfirmationResult);
         setIsOtpSent(true);
+        setResendTimer(30);
         setModalMessage("Enter the verification code '123456' to proceed.");
         setModalType("success");
         setModalVisible(true);
       } else {
         // Native APK flow - Real SMS OTP using React Native Firebase Auth
         const nativeAuth = require("@react-native-firebase/auth").default;
-        const result = await nativeAuth().signInWithPhoneNumber(formattedPhone);
+        const result = await nativeAuth().signInWithPhoneNumber(formattedPhone, forceResend === true);
         setConfirmationResult(result);
         setIsOtpSent(true);
+        setResendTimer(30);
         setModalMessage("OTP has been sent to your phone number via SMS.");
         setModalType("success");
         setModalVisible(true);
@@ -339,6 +404,13 @@ export default function DeliveryBoySignup() {
     }
   };
 
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setOtp("");
+    setIncorrectAttempts(0);
+    await sendOtp(true);
+  };
+
   const handleSubmit = async () => {
     const trimmedOtp = otp.trim();
     if (!trimmedOtp) {
@@ -352,6 +424,7 @@ export default function DeliveryBoySignup() {
     setIsSubmitting(true);
 
     try {
+      const formattedPhone = "+91" + form.phone.trim();
       // 1. Confirm OTP (check if already auto-verified)
       let firebaseUser = null;
       let currentUser = null;
@@ -362,12 +435,30 @@ export default function DeliveryBoySignup() {
         currentUser = auth.currentUser;
       }
 
-      if (currentUser) {
+      if (currentUser && currentUser.phoneNumber === formattedPhone) {
         console.log("Already authenticated via auto-verification during signup.");
         firebaseUser = currentUser;
       } else {
-        const result = await confirmationResult.confirm(trimmedOtp);
-        firebaseUser = result.user;
+        try {
+          const result = await confirmationResult.confirm(trimmedOtp);
+          firebaseUser = result.user;
+        } catch (confirmError) {
+          console.error("OTP Confirmation error:", confirmError);
+          const newAttempts = incorrectAttempts + 1;
+          setIncorrectAttempts(newAttempts);
+
+          let msg = "Incorrect OTP. Please check the code and try again.";
+          if (newAttempts === 1) {
+            msg = "Incorrect OTP. You have only 1 attempt remaining, otherwise your device will be blocked.";
+          } else if (newAttempts >= 2) {
+            msg = "Incorrect OTP. Too many attempts. Your device/number is blocked by Firebase. Please try again later.";
+          }
+          setModalMessage(msg);
+          setModalType("error");
+          setModalVisible(true);
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       const uploadResults = {};
@@ -403,6 +494,14 @@ export default function DeliveryBoySignup() {
         body: JSON.stringify(finalFormData),
       }, 15000);
 
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        setModalMessage("Server is temporarily unavailable. Please try again in a moment.");
+        setModalType("error");
+        setModalVisible(true);
+        setIsSubmitting(false);
+        return;
+      }
       const data = await res.json();
       if (res.ok) {
         setModalMessage(data.message || "Signup Request Submitted!");
@@ -417,7 +516,7 @@ export default function DeliveryBoySignup() {
       }
     } catch (error) {
       console.error("Verification/Signup error:", error);
-      const msg = "Signup Failed: " + (error.message || "Unknown error");
+      let msg = "Signup Failed: " + (error.message || "Unknown error");
       setModalMessage(msg);
       setModalType("error");
       setModalVisible(true);
@@ -445,14 +544,17 @@ export default function DeliveryBoySignup() {
           <Ionicons name="arrow-back" size={22} color="#333" />
         </TouchableOpacity>
 
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          onScrollBeginDrag={Keyboard.dismiss}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={{ flex: 1 }}
         >
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
           {/* Welcome Header */}
           <View style={styles.welcomeHeaderContainer}>
             <View style={styles.welcomeHeader}>
@@ -664,13 +766,9 @@ export default function DeliveryBoySignup() {
                   placeholder="IFSC Code"
                   placeholderTextColor="#aaa"
                   autoCapitalize="characters"
-                  maxLength={11}
                   style={styles.customInput}
                   value={form.ifscCode}
-                  onChangeText={(val) => {
-                    const cleaned = val.toUpperCase().replace(/[^A-Z0-9]/g, "");
-                    handleChange("ifscCode", cleaned);
-                  }}
+                  onChangeText={(val) => handleChange("ifscCode", val)}
                 />
               </View>
               {validationErrors.ifscCode && (
@@ -816,13 +914,45 @@ export default function DeliveryBoySignup() {
                 </View>
               </View>
 
+              {/* Terms and Conditions & Privacy Policy Acceptance */}
+              <View style={styles.checkboxContainer}>
+                <TouchableOpacity
+                  style={styles.checkboxTouch}
+                  onPress={() => setIsAccepted(!isAccepted)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={isAccepted ? "checkbox" : "square-outline"}
+                    size={22}
+                    color={isAccepted ? "#2E7D32" : "#aaa"}
+                  />
+                </TouchableOpacity>
+                <Text style={styles.checkboxText}>
+                  I agree to the{" "}
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => handleOpenURL("https://terms-and-conditions-of-delivery-bo.vercel.app/")}
+                  >
+                    Terms & Conditions
+                  </Text>{" "}
+                  and{" "}
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => handleOpenURL("https://delivery-partner-privacy-policy.vercel.app/")}
+                  >
+                    Privacy Policy
+                  </Text>
+                </Text>
+              </View>
+
               {/* Submit Button */}
               <TouchableOpacity
-                style={styles.signupBtn}
-                onPress={sendOtp}
+                style={[styles.signupBtn, !isAccepted && styles.signupBtnDisabled]}
+                onPress={() => sendOtp(false)}
+                disabled={!isAccepted}
                 activeOpacity={0.8}
               >
-                <Text style={styles.signupBtnText}>Sign up</Text>
+                <Text style={[styles.signupBtnText, !isAccepted && styles.signupBtnTextDisabled]}>Sign up</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -846,17 +976,31 @@ export default function DeliveryBoySignup() {
               >
                 <Text style={styles.signupBtnText}>Verify & Register</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setIsOtpSent(false)}
-                activeOpacity={0.7}
-                style={styles.changePhoneBtn}
-              >
-                <Text style={styles.changePhoneText}>Change Phone Number</Text>
-              </TouchableOpacity>
+              <View style={styles.otpActionsContainer}>
+                <TouchableOpacity
+                  onPress={() => setIsOtpSent(false)}
+                  activeOpacity={0.7}
+                  style={styles.changePhoneBtn}
+                >
+                  <Text style={styles.changePhoneText}>Change Phone Number</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleResendOtp}
+                  disabled={resendTimer > 0}
+                  activeOpacity={resendTimer > 0 ? 1 : 0.7}
+                  style={styles.resendOtpBtn}
+                >
+                  <Text style={resendTimer > 0 ? styles.resendOtpTextDisabled : styles.resendOtpText}>
+                    {resendTimer > 0 ? `Resend OTP (${resendTimer}s)` : "Resend OTP"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
       <View id="recaptcha-container" />
 
       {/* Custom Alert Modal */}
@@ -1129,14 +1273,34 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: 20,
   },
-  changePhoneBtn: {
+  otpActionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
     marginTop: 16,
+    paddingHorizontal: 4,
+  },
+  changePhoneBtn: {
     paddingVertical: 8,
   },
   changePhoneText: {
     color: "#666",
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+  resendOtpBtn: {
+    paddingVertical: 8,
+  },
+  resendOtpText: {
+    color: "#E55B49",
+    fontSize: 14,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  resendOtpTextDisabled: {
+    color: "#aaa",
+    fontSize: 14,
+    textDecorationLine: "none",
   },
   eyeIcon: {
     position: "absolute",
@@ -1196,5 +1360,33 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 18,
     fontWeight: "700",
+  },
+  checkboxContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+    paddingHorizontal: 8,
+    width: "100%",
+  },
+  checkboxTouch: {
+    marginRight: 10,
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: 13,
+    color: "#333",
+    lineHeight: 18,
+  },
+  linkText: {
+    color: "#2E7D32",
+    fontWeight: "bold",
+    textDecorationLine: "underline",
+  },
+  signupBtnDisabled: {
+    backgroundColor: "#E0E0E0",
+    opacity: 0.6,
+  },
+  signupBtnTextDisabled: {
+    color: "#888",
   },
 });

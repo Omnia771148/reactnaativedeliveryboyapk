@@ -38,6 +38,24 @@ export default function SettingsScreen() {
   const confirmPerformLogout = async () => {
     setLogoutModalVisible(false);
     try {
+      // Sign out of Firebase Auth to prevent stale sessions
+      if (Platform.OS !== 'web') {
+        try {
+          const nativeAuth = require('@react-native-firebase/auth').default;
+          await nativeAuth().signOut();
+        } catch (authErr) {
+          console.error('Error signing out of native Firebase Auth:', authErr);
+        }
+      } else {
+        try {
+          const { auth } = require('@/lib/firebase');
+          const { signOut } = require('firebase/auth');
+          await signOut(auth);
+        } catch (authErr) {
+          console.error('Error signing out of web Firebase Auth:', authErr);
+        }
+      }
+
       const storedId = await AsyncStorage.getItem('userid');
       if (storedId) {
         // 1. Mark offline on the backend

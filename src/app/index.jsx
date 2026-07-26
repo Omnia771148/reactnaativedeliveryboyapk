@@ -94,11 +94,16 @@ export default function HomeScreen() {
         }, 10000);
 
         let data = {};
-        try {
-          const text = await response.text();
-          data = JSON.parse(text);
-        } catch (_e) {
-          data = { message: 'Invalid response from server. Check if backend is running.' };
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          try {
+            const text = await response.text();
+            data = JSON.parse(text);
+          } catch (_e) {
+            data = { message: 'Server error. Please try to login again.' };
+          }
+        } else {
+          data = { message: 'Server is temporarily unavailable. Please try to login again.' };
         }
 
         return { ok: response.ok, status: response.status, data };
@@ -147,7 +152,7 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Connection error:', error);
       setModalType('error');
-      setModalMessage('Could not connect to the backend server. Please verify the backend is running and your connection is active.');
+      setModalMessage('Could not connect to the server. Please try to login again.');
       setModalVisible(true);
     } finally {
       setLoading(false);

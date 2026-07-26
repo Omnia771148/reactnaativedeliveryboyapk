@@ -1,7 +1,6 @@
-import Constants from 'expo-constants';
 
 const getApiUrl = () => {
-  return 'https://deliveryboybackend-shbd.onrender.com';
+  return 'https://deliveryboy-backend.onrender.com';
 };
 
 export const API_URL = getApiUrl();

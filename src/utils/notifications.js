@@ -63,6 +63,11 @@ export async function registerForFCMAsync() {
       return null;
     }
 
+    // Register device for remote messages
+    if (Platform.OS === 'ios') {
+      await messagingModule().registerDeviceForRemoteMessages();
+    }
+
     // Fetch FCM Token
     const token = await messagingModule().getToken();
     console.log('Retrieved FCM Token:', token);

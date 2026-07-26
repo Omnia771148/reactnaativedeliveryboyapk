@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert } from 'react-native';
 
 let Audio = null;
 try {
@@ -64,7 +64,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
   ];
 
   // Calculate sliding translateX for active white circle (width of bar is 360)
-  // Distance between each tab is 85 pixels (available width 340 / 4)
+  // Distance between each tab  85 pixels (available width 340 / 4)
   const translateX = animatedIndex.interpolate({
     inputRange: [0, 1, 2, 3],
     outputRange: [0, 85, 170, 255],
@@ -227,6 +227,25 @@ export default function Layout() {
             } catch (error) {
               console.error('Failed to play custom notification sound:', error);
             }
+
+            // Display visual notification alert popup in the foreground
+            Alert.alert(
+              remoteMessage.notification?.title || 'New Order Available!',
+              remoteMessage.notification?.body || 'Check the orders screen for details.',
+              [
+                {
+                  text: 'View Orders',
+                  onPress: () => {
+                    router.push('/orders');
+                  }
+                },
+                {
+                  text: 'Dismiss',
+                  style: 'cancel'
+                }
+              ],
+              { cancelable: true }
+            );
           }
         });
 

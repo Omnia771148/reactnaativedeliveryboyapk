@@ -23,6 +23,28 @@ const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreCl
 
 export default function ForgotPassword() {
   const [step, setStep] = useState(1); // 1: Phone, 2: OTP, 3: New Password
+
+  // Clear any stale firebase auth session when entering forgot password screen
+  useEffect(() => {
+    const clearSession = async () => {
+      if (Platform.OS !== "web" && !isExpoGo) {
+        try {
+          const nativeAuth = require("@react-native-firebase/auth").default;
+          await nativeAuth().signOut();
+        } catch (err) {
+          console.error("Error signing out native auth:", err);
+        }
+      } else {
+        try {
+          const { signOut } = require("firebase/auth");
+          await signOut(auth);
+        } catch (err) {
+          console.error("Error signing out web auth:", err);
+        }
+      }
+    };
+    clearSession();
+  }, []);
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -33,16 +55,34 @@ export default function ForgotPassword() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [confirmPasswordError, setConfirmPasswordError] = useState("");
+  const [resendTimer, setResendTimer] = useState(0);
+  const [incorrectAttempts, setIncorrectAttempts] = useState(0);
+
+  // Handle resend countdown timer (30s)
+  useEffect(() => {
+    let interval = null;
+    if (step === 2 && resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (resendTimer === 0 && interval) {
+      clearInterval(interval);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [step, resendTimer]);
 
   // Listen for automatic SMS code resolution (auto-verification) on Android devices
   useEffect(() => {
     let unsubscribe;
     if (step === 2) {
+      const formattedPhone = "+91" + phone.trim();
       if (Platform.OS !== "web" && !isExpoGo) {
         try {
           const nativeAuth = require("@react-native-firebase/auth").default;
           unsubscribe = nativeAuth().onAuthStateChanged((user) => {
-            if (user) {
+            if (user && user.phoneNumber === formattedPhone) {
               console.log("Firebase native auth auto-verified phone:", user.phoneNumber);
               setStep(3);
             }
@@ -53,7 +93,7 @@ export default function ForgotPassword() {
       } else {
         const { onAuthStateChanged } = require("firebase/auth");
         unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (user) {
+          if (user && user.phoneNumber === formattedPhone) {
             console.log("Firebase Web SDK auto-verified phone:", user.phoneNumber);
             setStep(3);
           }
@@ -63,10 +103,10 @@ export default function ForgotPassword() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [step]);
+  }, [step, phone]);
 
   // Step 1: Send OTP
-  const handleSendOtp = async () => {
+  const handleSendOtp = async (forceResend = false) => {
     setError("");
 
     if (!/^\d{10}$/.test(phone)) {
@@ -85,6 +125,12 @@ export default function ForgotPassword() {
         body: JSON.stringify({ phone: formattedPhone }),
       }, 10000);
       
+      const contentType = checkRes.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        setError("Server is temporarily unavailable. Please try again in a moment.");
+        setIsLoading(false);
+        return;
+      }
       const checkData = await checkRes.json();
       if (!checkRes.ok || !checkData.success) {
         setError(checkData.message || "Phone number not found.");
@@ -108,12 +154,13 @@ export default function ForgotPassword() {
         const result = await signInWithPhoneNumber(auth, formattedPhone, window.recaptchaVerifier);
         setConfirmationResult(result);
         setStep(2);
+        setResendTimer(30);
         Alert.alert("OTP Sent", "Verification code has been sent to your phone number.");
       } else if (isExpoGo) {
         // Native mobile flow bypass for development/testing
         const mockConfirmationResult = {
           confirm: async (verificationCode) => {
-            if (verificationCode === "123456" || verificationCode === otp) {
+            if (verificationCode === "123456") {
               return {
                 user: {
                   uid: "mock-uid-" + Math.random().toString(36).substring(7),
@@ -127,13 +174,15 @@ export default function ForgotPassword() {
         };
         setConfirmationResult(mockConfirmationResult);
         setStep(2);
+        setResendTimer(30);
         Alert.alert("OTP Sent (Development)", "Enter the verification code '123456' to proceed.");
       } else {
         // Real Native SMS OTP using React Native Firebase Auth
         const nativeAuth = require("@react-native-firebase/auth").default;
-        const result = await nativeAuth().signInWithPhoneNumber(formattedPhone);
+        const result = await nativeAuth().signInWithPhoneNumber(formattedPhone, forceResend === true);
         setConfirmationResult(result);
         setStep(2);
+        setResendTimer(30);
         Alert.alert("OTP Sent", "Verification code has been sent to your phone number.");
       }
     } catch (err) {
@@ -144,6 +193,13 @@ export default function ForgotPassword() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setOtp("");
+    setIncorrectAttempts(0);
+    await handleSendOtp(true);
   };
 
   // Step 2: Verify OTP
@@ -157,6 +213,7 @@ export default function ForgotPassword() {
     setIsLoading(true);
 
     try {
+      const formattedPhone = "+91" + phone.trim();
       // Check if user is already authenticated (auto-verified by Android Google Play Services)
       let currentUser = null;
       if (Platform.OS !== "web" && !isExpoGo) {
@@ -166,7 +223,7 @@ export default function ForgotPassword() {
         currentUser = auth.currentUser;
       }
 
-      if (currentUser) {
+      if (currentUser && currentUser.phoneNumber === formattedPhone) {
         console.log("Already authenticated via auto-verification.");
         setStep(3);
       } else {
@@ -176,8 +233,18 @@ export default function ForgotPassword() {
       }
     } catch (err) {
       console.error("Verify Error:", err);
-      setError("Invalid OTP");
-      Alert.alert("Error", "Invalid OTP");
+      
+      const newAttempts = incorrectAttempts + 1;
+      setIncorrectAttempts(newAttempts);
+
+      let errMsg = "Invalid OTP";
+      if (newAttempts === 1) {
+        errMsg = "Incorrect OTP. You have only 1 attempt remaining, otherwise your device will be blocked.";
+      } else if (newAttempts >= 2) {
+        errMsg = "Incorrect OTP. Too many attempts. Your device/number is blocked by Firebase. Please try again later.";
+      }
+      setError(errMsg);
+      Alert.alert("Error", errMsg);
     } finally {
       setIsLoading(false);
     }
@@ -207,6 +274,12 @@ export default function ForgotPassword() {
         body: JSON.stringify({ phone: formattedPhone, newPassword }),
       }, 10000);
 
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        setError("Server is temporarily unavailable. Please try again in a moment.");
+        setIsLoading(false);
+        return;
+      }
       const data = await res.json();
       if (res.ok && data.success) {
         Alert.alert("Success", "Password reset successfully! Please login.", [
@@ -290,7 +363,7 @@ export default function ForgotPassword() {
 
                 <TouchableOpacity
                   style={styles.submitBtn}
-                  onPress={handleSendOtp}
+                  onPress={() => handleSendOtp(false)}
                   activeOpacity={0.8}
                 >
                   <Text style={styles.submitBtnText}>Send OTP</Text>
@@ -319,13 +392,26 @@ export default function ForgotPassword() {
                   <Text style={styles.submitBtnText}>Verify OTP</Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  onPress={() => setStep(1)}
-                  style={styles.changeBtn}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.changeBtnText}>Change Number</Text>
-                </TouchableOpacity>
+                <View style={styles.otpActionsContainer}>
+                  <TouchableOpacity
+                    onPress={() => setStep(1)}
+                    style={styles.changeBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.changeBtnText}>Change Number</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={handleResendOtp}
+                    disabled={resendTimer > 0}
+                    activeOpacity={resendTimer > 0 ? 1 : 0.7}
+                    style={styles.resendOtpBtn}
+                  >
+                    <Text style={resendTimer > 0 ? styles.resendOtpTextDisabled : styles.resendOtpText}>
+                      {resendTimer > 0 ? `Resend OTP (${resendTimer}s)` : "Resend OTP"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -541,14 +627,34 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "500",
   },
-  changeBtn: {
+  otpActionsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
     marginTop: 20,
+    paddingHorizontal: 4,
+  },
+  changeBtn: {
     paddingVertical: 6,
   },
   changeBtnText: {
     color: "#555",
     fontSize: 14,
     textDecorationLine: "underline",
+  },
+  resendOtpBtn: {
+    paddingVertical: 6,
+  },
+  resendOtpText: {
+    color: "#E55B49",
+    fontSize: 14,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
+  resendOtpTextDisabled: {
+    color: "#888",
+    fontSize: 14,
+    textDecorationLine: "none",
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
