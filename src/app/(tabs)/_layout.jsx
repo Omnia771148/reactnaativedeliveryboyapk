@@ -1,7 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert } from 'react-native';
+import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '@/constants/api';
+import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 let Audio = null;
 try {
@@ -14,6 +18,82 @@ try {
 function CustomTabBar({ state, descriptors, navigation }) {
   const animatedIndex = useRef(new Animated.Value(state.index)).current;
   const [translateYAnim] = useState(() => new Animated.Value(0));
+  const [orderCount, setOrderCount] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkOrders = async () => {
+      try {
+        const storedId = await AsyncStorage.getItem('userid');
+        const storedActive = await AsyncStorage.getItem('isActive');
+        const userIsActive = storedActive !== 'false';
+
+        if (!userIsActive) {
+          if (isMounted) setOrderCount(0);
+          return;
+        }
+
+        let currentActiveOrderId = null;
+        if (storedId) {
+          try {
+            const activeCheckResponse = await fetch(`${API_URL}/api/deliveryboy/${storedId}/activeorder`);
+            if (activeCheckResponse.ok) {
+              const text = await activeCheckResponse.text();
+              if (text && text.trim().length > 0) {
+                const activeData = JSON.parse(text);
+                if (activeData && activeData.orderId) {
+                  currentActiveOrderId = activeData.orderId;
+                }
+              }
+            }
+          } catch (err) {}
+        }
+
+        const fetchUrl = storedId
+          ? `${API_URL}/api/acceptedorders?deliveryBoyId=${storedId}`
+          : `${API_URL}/api/acceptedorders`;
+        const response = await fetch(fetchUrl);
+        if (response.ok) {
+          const text = await response.text();
+          const data = JSON.parse(text);
+          let activeOrders = storedId
+            ? (Array.isArray(data) ? data.filter(order => {
+              const notRejected = !order.rejectedBy || !order.rejectedBy.includes(storedId);
+              const isAvailableOrMine = !order.deliveryBoyId || order.deliveryBoyId === storedId;
+              return notRejected && isAvailableOrMine;
+            }) : [])
+            : data;
+
+          if (currentActiveOrderId) {
+            activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
+          }
+
+          if (isMounted) setOrderCount(activeOrders.length);
+        }
+      } catch (e) {
+        // ignore fetch error
+      }
+    };
+
+    checkOrders();
+    const interval = setInterval(checkOrders, 4000);
+
+    const updateSub = DeviceEventEmitter.addListener('updateOrdersCount', (count) => {
+      if (isMounted) setOrderCount(count);
+    });
+
+    const refreshSub = DeviceEventEmitter.addListener('refreshOrdersCount', () => {
+      checkOrders();
+    });
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      updateSub.remove();
+      refreshSub.remove();
+    };
+  }, []);
 
   // Animate the index change smoothly
   useEffect(() => {
@@ -133,12 +213,19 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 )}
 
                 {/* Icon Container (Lifts and scales up when selected) */}
-                <Animated.View style={{ transform: [{ translateY }, { scale }] }}>
+                <Animated.View style={{ transform: [{ translateY }, { scale }], position: 'relative' }}>
                   <Ionicons
                     name={iconName}
                     size={22}
                     color="#000000"
                   />
+                  {index === 1 && orderCount > 0 && (
+                    <View style={styles.badgeContainer}>
+                      <Text style={styles.badgeText}>
+                        {orderCount > 99 ? '99+' : orderCount}
+                      </Text>
+                    </View>
+                  )}
                 </Animated.View>
               </TouchableOpacity>
             );
@@ -156,10 +243,6 @@ function CustomTabBar({ state, descriptors, navigation }) {
     </Animated.View>
   );
 }
-
-import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
@@ -390,5 +473,32 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 10, // Must be higher than navBar elevation (8) to render on top on Android
     zIndex: 1,
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -6,
+    right: -10,
+    backgroundColor: '#E53935', // Premium Red color for order notification
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#E53935',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 6,
+    zIndex: 10,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });

@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function LiveOrdersScreen() {
@@ -22,7 +22,7 @@ export default function LiveOrdersScreen() {
 
   // Custom alert modal states
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalType, setModalType] = useState('success'); // 'success' or 'error'
+  const [modalType, setModalType] = useState('success'); 
   const [modalMessage, setModalMessage] = useState('');
 
   const fetchActiveOrder = useCallback(async (userIdToUse) => {
@@ -94,28 +94,110 @@ export default function LiveOrdersScreen() {
     return unsubscribe;
   }, [navigation, userid, fetchActiveOrder]);
 
+  const openUrlInBrowserOrApp = async (url) => {
+    console.log('openUrlInBrowserOrApp opening URL:', url);
+    try {
+      if (Platform.OS === 'web') {
+        const win = window.open(url, '_blank');
+        if (!win || win.closed || typeof win.closed === 'undefined') {
+          window.location.href = url;
+        }
+      } else {
+        await Linking.openURL(url);
+      }
+    } catch (error) {
+      console.error('Failed to open map URL:', error);
+      if (Platform.OS === 'web') {
+        window.location.href = url;
+      } else {
+        Alert.alert('Error', 'Cannot open Google Maps');
+      }
+    }
+  };
+
+  const extractCoordinates = (sourceObj) => {
+    if (!sourceObj) return null;
+
+    const candidateSources = [
+      sourceObj.userCoordinates,
+      sourceObj.customerCoordinates,
+      sourceObj.restaurantLocation,
+      sourceObj.location,
+      sourceObj.deliveryLocation,
+      sourceObj.userLocation,
+      sourceObj
+    ];
+
+    for (let src of candidateSources) {
+      if (!src) continue;
+
+      if (typeof src === 'string') {
+        try {
+          src = JSON.parse(src);
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (typeof src === 'object' && src !== null) {
+        if (Array.isArray(src.coordinates) && src.coordinates.length >= 2) {
+          const lng = Number(src.coordinates[0]);
+          const lat = Number(src.coordinates[1]);
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+            return { lat, lng };
+          }
+        }
+
+        const latVal = src.lat ?? src.latitude ?? src.latitiude;
+        const lngVal = src.lng ?? src.longitude ?? src.lngitude ?? src.long;
+
+        if (latVal !== undefined && latVal !== null && lngVal !== undefined && lngVal !== null) {
+          const lat = Number(latVal);
+          const lng = Number(lngVal);
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+            return { lat, lng };
+          }
+        }
+      }
+    }
+
+    return null;
+  };
+
   const handleOpenMap = async () => {
     if (!activeOrder) return;
 
-    let lat = activeOrder.restaurantLocation?.lat;
-    let lng = activeOrder.restaurantLocation?.lng;
-    let url = activeOrder.rest;
+    let url = null;
+    const coords = extractCoordinates(activeOrder.restaurantLocation || activeOrder);
 
-    if (lat && lng) {
-      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    if (coords && coords.lat && coords.lng) {
+      url = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
     }
 
     if (!url) {
-      Alert.alert('Error', 'Google Map link or coordinates are not available');
+      url = activeOrder.rest || activeOrder.restaurantLocation?.url || activeOrder.restaurantMapUrl;
+      if (typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        url = null;
+      }
+    }
+
+    if (!url) {
+      const restName = activeOrder.restaurantName || (typeof activeOrder.rest === 'string' && !activeOrder.rest.startsWith('http') ? activeOrder.rest : '');
+      const restAddr = activeOrder.restaurantAddress || activeOrder.restaurantLocation?.address || '';
+      const queryStr = [restName, restAddr].filter(Boolean).join(', ');
+      if (queryStr) {
+        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryStr)}`;
+      }
+    }
+
+    if (!url) {
+      const msg = 'Restaurant map details or location are not available.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Error', msg);
       return;
     }
 
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      Alert.alert('Error', 'Cannot open the Google Map link');
-      console.error('Failed to open map URL:', error);
-    }
+    openUrlInBrowserOrApp(url);
   };
 
   const handleOpenCustomerMap = async () => {
@@ -124,31 +206,41 @@ export default function LiveOrdersScreen() {
     let lat = null;
     let lng = null;
 
-    if (activeOrder.location?.lat && activeOrder.location?.lng) {
-      lat = activeOrder.location.lat;
-      lng = activeOrder.location.lng;
-    } else if (activeOrder.lat && activeOrder.lng) {
-      lat = activeOrder.lat;
-      lng = activeOrder.lng;
+    // Read userCoordinates object properties (lat and lng)
+    if (activeOrder.userCoordinates && typeof activeOrder.userCoordinates === 'object') {
+      lat = activeOrder.userCoordinates.lat;
+      lng = activeOrder.userCoordinates.lng;
     }
 
-    let url = activeOrder.location?.googleMapsUrl || activeOrder.googleMapsUrl;
-
-    if (lat && lng) {
-      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    // In case userCoordinates was stored as stringified JSON
+    if ((lat === undefined || lng === undefined || lat === null || lng === null) && typeof activeOrder.userCoordinates === 'string') {
+      try {
+        const parsed = JSON.parse(activeOrder.userCoordinates);
+        lat = parsed.lat;
+        lng = parsed.lng;
+      } catch (e) {}
     }
 
-    if (!url) {
-      Alert.alert('Error', 'Google Map link or coordinates are not available for customer');
+    // Fallbacks for location object or root lat/lng
+    if (lat === undefined || lng === undefined || lat === null || lng === null) {
+      lat = activeOrder.location?.lat ?? activeOrder.lat;
+      lng = activeOrder.location?.lng ?? activeOrder.lng;
+    }
+
+    if (lat === undefined || lng === undefined || lat === null || lng === null) {
+      const errorMsg = 'userCoordinates object with lat and lng is missing in order data';
+      if (Platform.OS === 'web') {
+        window.alert(errorMsg);
+      } else {
+        Alert.alert('Error', errorMsg);
+      }
       return;
     }
 
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      Alert.alert('Error', 'Cannot open the Google Map link');
-      console.error('Failed to open map URL:', error);
-    }
+    // Generate Google Maps URL using exact userCoordinates lat and lng
+    const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+
+    openUrlInBrowserOrApp(googleMapsUrl);
   };
 
   const handlePickupOrder = async () => {
@@ -435,7 +527,7 @@ export default function LiveOrdersScreen() {
                 {/* DELIVERY FEE BLOCK */}
                 <View style={styles.block}>
                   <Text style={styles.blockLabel}>DELIVERY FEE</Text>
-                  <Text style={styles.feeText}>₹{activeOrder.deliveryCharge || 0}</Text>
+                  <Text style={styles.feeText}>₹{activeOrder.deliveryFee ?? activeOrder.deliveryCharge ?? 0}</Text>
                 </View>
 
                 {/* ITEMS TO PICKUP BLOCK */}

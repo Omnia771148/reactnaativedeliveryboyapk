@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, DeviceEventEmitter, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 let Audio = null;
@@ -186,6 +186,7 @@ export default function OrdersScreen() {
         isFirstFetch.current = false;
 
         setOrders(activeOrders);
+        DeviceEventEmitter.emit('updateOrdersCount', activeOrders.length);
       } else {
         console.error('Failed to fetch accepted orders:', response.status);
       }
@@ -249,40 +250,104 @@ export default function OrdersScreen() {
     fetchOrders();
   };
 
-  const handleOpenMap = async (item) => {
-    // Extract coordinates from restaurantLocation, location, or top-level properties
-    let lat = null;
-    let lng = null;
+  const openUrlInBrowserOrApp = async (url) => {
+    try {
+      if (Platform.OS === 'web') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        await Linking.openURL(url);
+      }
+    } catch (error) {
+      console.error('Failed to open map URL:', error);
+      if (Platform.OS === 'web') {
+        window.location.href = url;
+      } else {
+        customAlert('Error', 'Cannot open Google Maps');
+      }
+    }
+  };
 
-    if (item?.restaurantLocation?.lat && item?.restaurantLocation?.lng) {
-      lat = item.restaurantLocation.lat;
-      lng = item.restaurantLocation.lng;
-    } else if (item?.location?.lat && item?.location?.lng) {
-      lat = item.location.lat;
-      lng = item.location.lng;
-    } else if (item?.lat && item?.lng) {
-      lat = item.lat;
-      lng = item.lng;
+  const extractCoordinates = (sourceObj) => {
+    if (!sourceObj) return null;
+
+    const candidateSources = [
+      sourceObj.userCoordinates,
+      sourceObj.customerCoordinates,
+      sourceObj.restaurantLocation,
+      sourceObj.location,
+      sourceObj.deliveryLocation,
+      sourceObj.userLocation,
+      sourceObj
+    ];
+
+    for (let src of candidateSources) {
+      if (!src) continue;
+
+      if (typeof src === 'string') {
+        try {
+          src = JSON.parse(src);
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (typeof src === 'object' && src !== null) {
+        if (Array.isArray(src.coordinates) && src.coordinates.length >= 2) {
+          const lng = Number(src.coordinates[0]);
+          const lat = Number(src.coordinates[1]);
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+            return { lat, lng };
+          }
+        }
+
+        const latVal = src.lat ?? src.latitude ?? src.latitiude;
+        const lngVal = src.lng ?? src.longitude ?? src.lngitude ?? src.long;
+
+        if (latVal !== undefined && latVal !== null && lngVal !== undefined && lngVal !== null) {
+          const lat = Number(latVal);
+          const lng = Number(lngVal);
+          if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+            return { lat, lng };
+          }
+        }
+      }
     }
 
-    let url = item?.rest;
+    return null;
+  };
 
-    // Use coordinates if available to construct a stable Google Maps query link
-    if (lat && lng) {
-      url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+  const handleOpenMap = async (item) => {
+    if (!item) return;
+
+    let url = null;
+    const coords = extractCoordinates(item.restaurantLocation || item.location || item);
+
+    if (coords && coords.lat && coords.lng) {
+      url = `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
     }
 
     if (!url) {
-      customAlert('Error', 'Google Map link or coordinates are not available');
+      url = item.rest || item.restaurantLocation?.url || item.googleMapsUrl;
+      if (typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        url = null;
+      }
+    }
+
+    if (!url) {
+      const restName = item?.restaurantName || (typeof item?.rest === 'string' && !item?.rest.startsWith('http') ? item.rest : '');
+      const restAddr = item?.restaurantAddress || item?.restaurantLocation?.address || '';
+      const queryStr = [restName, restAddr].filter(Boolean).join(', ');
+      if (queryStr) {
+        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryStr)}`;
+      }
+    }
+
+    if (!url) {
+      customAlert('Error', 'Google Map link or coordinates are not available for this restaurant');
       return;
     }
 
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      customAlert('Error', 'Cannot open the Google Map link');
-      console.error('Failed to open map URL:', error);
-    }
+    openUrlInBrowserOrApp(url);
   };
 
   const handleAcceptOrder = async (order) => {
@@ -461,14 +526,21 @@ export default function OrdersScreen() {
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Distance</Text>
           <Text style={styles.detailSeparator}>-</Text>
-          <Text style={styles.detailValue}>{item.location?.distanceText || 'N/A'}</Text>
+          <Text style={styles.detailValue}>
+            {(() => {
+              const dist = item.deliveryDistance ?? item.distance ?? item.location?.distanceText;
+              if (dist === undefined || dist === null || dist === '') return 'N/A';
+              if (typeof dist === 'number') return `${dist} km`;
+              return `${dist}`;
+            })()}
+          </Text>
         </View>
 
         {/* Card Row: Delivery Fee */}
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Delivery fee</Text>
           <Text style={styles.detailSeparator}>-</Text>
-          <Text style={styles.detailValue}>₹ {item.deliveryCharge || 0}</Text>
+          <Text style={styles.detailValue}>₹ {item.deliveryFee ?? item.deliveryCharge ?? 0}</Text>
         </View>
 
         {/* Buttons Row */}
