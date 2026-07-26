@@ -260,7 +260,7 @@ export default function OrdersScreen() {
     } catch (error) {
       console.error('Failed to open map URL:', error);
       if (Platform.OS === 'web') {
-        window.location.href = url;
+        window.location.assign(url);
       } else {
         customAlert('Error', 'Cannot open Google Maps');
       }
@@ -702,7 +702,7 @@ const styles = StyleSheet.create({
   listContent: {
     flexGrow: 1,
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 110,
   },
   orderCard: {
     backgroundColor: '#EAE5D9', // Warm sand/beige card background

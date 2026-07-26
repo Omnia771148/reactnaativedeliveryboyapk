@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '@/constants/api';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
@@ -16,6 +17,7 @@ try {
 
 // Custom Tab Bar component with sliding circle transition
 function CustomTabBar({ state, descriptors, navigation }) {
+  const insets = useSafeAreaInsets();
   const animatedIndex = useRef(new Animated.Value(state.index)).current;
   const [translateYAnim] = useState(() => new Animated.Value(0));
   const [orderCount, setOrderCount] = useState(0);
@@ -150,8 +152,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
     outputRange: [0, 85, 170, 255],
   });
 
+  const bottomPadding = Math.max(insets.bottom, 12);
+
   return (
-    <Animated.View style={[styles.container, { transform: [{ translateY: translateYAnim }] }]}>
+    <Animated.View style={[styles.container, { paddingBottom: bottomPadding, transform: [{ translateY: translateYAnim }] }]}>
       <View style={styles.navBarWrapper}>
         {/* 1. Sand-Colored Background Bar with Shadow/Elevation */}
         <View style={styles.navBarBg} />
@@ -407,7 +411,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     alignItems: 'center',
-    paddingBottom: 16,
     backgroundColor: 'transparent',
     pointerEvents: 'box-none',
   },

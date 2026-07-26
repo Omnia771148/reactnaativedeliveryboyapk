@@ -1,5 +1,6 @@
 import { Slot } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 import { useEffect, useState } from 'react';
 
@@ -26,9 +27,9 @@ export default function RootLayout() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaProvider style={styles.container}>
       <Slot />
-    </View>
+    </SafeAreaProvider>
   );
 }
 

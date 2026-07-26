@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 30,
+    paddingBottom: 110,
   },
   mainCard: {
     backgroundColor: '#EAE5D9', // Matching the warm sand/beige card frame tone
