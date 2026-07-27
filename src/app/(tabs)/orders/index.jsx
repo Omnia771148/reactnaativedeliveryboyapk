@@ -414,6 +414,7 @@ export default function OrdersScreen() {
       }
 
       if (response.ok) {
+        DeviceEventEmitter.emit('stopOrderSound');
         fetchOrders();
         router.replace('/liveorders');
       } else {
@@ -478,6 +479,7 @@ export default function OrdersScreen() {
       });
 
       if (response.ok) {
+        DeviceEventEmitter.emit('stopOrderSound');
         fetchOrders(); // Refresh to remove the rejected order from view
       } else {
         let errorData = {};

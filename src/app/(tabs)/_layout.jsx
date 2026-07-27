@@ -1,11 +1,12 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text } from 'react-native';
+import { Animated, AppState, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text, Modal, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '@/constants/api';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import { isBatteryOptimizationEnabled, requestIgnoreBatteryOptimization, openAppDetailsSettings } from '@/utils/batteryOptimization';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 let Audio = null;
@@ -251,11 +252,54 @@ function CustomTabBar({ state, descriptors, navigation }) {
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 export default function Layout() {
+  const [batteryOptimized, setBatteryOptimized] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const checkBatteryStatus = async () => {
+      const isOptimized = await isBatteryOptimizationEnabled();
+      if (active) {
+        setBatteryOptimized(isOptimized);
+      }
+    };
+
+    checkBatteryStatus();
+
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "active") {
+        checkBatteryStatus();
+      }
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
+
+  const currentSoundRef = useRef(null);
+
+  const stopSound = async () => {
+    if (currentSoundRef.current) {
+      try {
+        await currentSoundRef.current.stopAsync();
+        await currentSoundRef.current.unloadAsync();
+      } catch (e) {
+        console.warn('Error stopping sound:', e);
+      }
+      currentSoundRef.current = null;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     let unsubscribeMessage = null;
     let unsubscribeTokenRefresh = null;
     let unsubscribeNotificationOpened = null;
+
+    const stopSoundSub = DeviceEventEmitter.addListener('stopOrderSound', () => {
+      stopSound();
+    });
 
     const setupNotifications = async () => {
       try {
@@ -296,18 +340,16 @@ export default function Layout() {
 
             try {
               if (Audio) {
-                // Play the custom WAV sound file
-                const { sound } = await Audio.Sound.createAsync(
-                  require('../../../assets/ordernotification.wav')
-                );
-                await sound.playAsync();
+                // Stop any previous playing sound instance
+                await stopSound();
 
-                // Unload sound from memory once it finishes playing to prevent memory leaks
-                sound.setOnPlaybackStatusUpdate((status) => {
-                  if (status.didJustFinish) {
-                    sound.unloadAsync();
-                  }
-                });
+                // Play the custom WAV sound file continuously in a loop until accepted/rejected/dismissed
+                const { sound } = await Audio.Sound.createAsync(
+                  require('../../../assets/ordernotification.wav'),
+                  { isLooping: true }
+                );
+                currentSoundRef.current = sound;
+                await sound.playAsync();
               } else {
                 console.warn('Audio is not available, skipping custom notification sound.');
               }
@@ -321,14 +363,18 @@ export default function Layout() {
               remoteMessage.notification?.body || 'Check the orders screen for details.',
               [
                 {
-                  text: 'View Orders',
+                  text: 'View Live Orders',
                   onPress: () => {
-                    router.push('/orders');
+                    stopSound();
+                    router.push('/liveorders');
                   }
                 },
                 {
                   text: 'Dismiss',
-                  style: 'cancel'
+                  style: 'cancel',
+                  onPress: () => {
+                    stopSound();
+                  }
                 }
               ],
               { cancelable: true }
@@ -340,7 +386,8 @@ export default function Layout() {
         unsubscribeNotificationOpened = messagingModule().onNotificationOpenedApp((remoteMessage) => {
           if (isMounted) {
             console.log('Notification caused app to open from background:', remoteMessage);
-            router.push('/orders');
+            stopSound();
+            router.push('/liveorders');
           }
         });
 
@@ -350,7 +397,8 @@ export default function Layout() {
           .then((remoteMessage) => {
             if (remoteMessage && isMounted) {
               console.log('Notification caused app to open from quit state:', remoteMessage);
-              router.push('/orders');
+              stopSound();
+              router.push('/liveorders');
             }
           });
 
@@ -363,11 +411,46 @@ export default function Layout() {
 
     return () => {
       isMounted = false;
+      stopSound();
+      stopSoundSub.remove();
       if (unsubscribeMessage) unsubscribeMessage();
       if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();
       if (unsubscribeNotificationOpened) unsubscribeNotificationOpened();
     };
   }, []);
+
+  if (batteryOptimized) {
+    return (
+      <View style={styles.blockContainer}>
+        <View style={styles.blockCard}>
+          <FontAwesome name="exclamation-triangle" size={48} color="#C53030" style={{ marginBottom: 16 }} />
+          <Text style={styles.blockTitle}>Action Required</Text>
+          <Text style={styles.blockDescription}>
+            In order to receive delivery requests and order notifications in the background, you must change your battery settings to "No Restrictions".
+          </Text>
+          <Pressable 
+            onPress={() => requestIgnoreBatteryOptimization()}
+            style={({ pressed }) => [
+              styles.blockButton,
+              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+            ]}
+          >
+            <Text style={styles.blockButtonText}>{"ALLOW \"NO RESTRICTIONS\""}</Text>
+          </Pressable>
+
+          <Pressable 
+            onPress={() => openAppDetailsSettings()}
+            style={({ pressed }) => [
+              styles.blockSecondaryButton,
+              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+            ]}
+          >
+            <Text style={styles.blockSecondaryButtonText}>{"OPEN APP SETTINGS (Xiaomi / Samsung)"}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <Tabs
@@ -503,5 +586,62 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     includeFontPadding: false,
+  },
+  blockContainer: {
+    flex: 1,
+    backgroundColor: '#FAF9F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  blockCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+  blockTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#2D3748',
+    marginBottom: 12,
+  },
+  blockDescription: {
+    fontSize: 14,
+    color: '#4A5568',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  blockButton: {
+    width: '100%',
+    backgroundColor: '#208AEF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  blockButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  blockSecondaryButton: {
+    width: '100%',
+    backgroundColor: '#EDF2F7',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  blockSecondaryButtonText: {
+    color: '#2D3748',
+    fontWeight: '600',
+    fontSize: 13,
   },
 });

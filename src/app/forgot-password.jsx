@@ -24,7 +24,7 @@ const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreCl
 export default function ForgotPassword() {
   const [step, setStep] = useState(1); // 1: Phone, 2: OTP, 3: New Password
 
-  // Clear any stale firebase auth session when entering forgot password screen
+  // Clear  stale firebase auth session when entering forgot password screen
   useEffect(() => {
     const clearSession = async () => {
       if (Platform.OS !== "web" && !isExpoGo) {
@@ -379,6 +379,8 @@ export default function ForgotPassword() {
                   placeholderTextColor="#aaa"
                   keyboardType="numeric"
                   maxLength={6}
+                  autoComplete="sms-otp"
+                  textContentType="oneTimeCode"
                   value={otp}
                   onChangeText={setOtp}
                   style={styles.inputField}

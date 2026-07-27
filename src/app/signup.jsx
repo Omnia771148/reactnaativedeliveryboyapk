@@ -139,6 +139,38 @@ export default function DeliveryBoySignup() {
     };
   }, [isOtpSent, resendTimer]);
 
+  // Listen for automatic SMS code resolution (auto-verification) on Android devices
+  useEffect(() => {
+    let unsubscribe;
+    if (isOtpSent) {
+      const formattedPhone = "+91" + form.phone.trim();
+      if (Platform.OS !== "web" && !isExpoGo) {
+        try {
+          const nativeAuth = require("@react-native-firebase/auth").default;
+          unsubscribe = nativeAuth().onAuthStateChanged((user) => {
+            if (user && user.phoneNumber === formattedPhone) {
+              console.log("Firebase native auth auto-verified phone for signup:", user.phoneNumber);
+              handleSubmit();
+            }
+          });
+        } catch (err) {
+          console.error("Native auth listener setup failed in signup:", err);
+        }
+      } else {
+        const { onAuthStateChanged } = require("firebase/auth");
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user && user.phoneNumber === formattedPhone) {
+            console.log("Firebase Web SDK auto-verified phone for signup:", user.phoneNumber);
+            handleSubmit();
+          }
+        });
+      }
+    }
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isOtpSent, form.phone]);
+
   // Clear any stale firebase auth session when entering signup screen
   useEffect(() => {
     const clearSession = async () => {
@@ -965,6 +997,8 @@ export default function DeliveryBoySignup() {
                 placeholderTextColor="#aaa"
                 keyboardType="numeric"
                 maxLength={6}
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
                 style={styles.otpInput}
                 value={otp}
                 onChangeText={setOtp}
