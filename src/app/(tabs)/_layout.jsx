@@ -8,6 +8,15 @@ import { API_URL } from '@/constants/api';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 let Audio = null;
 try {
@@ -394,11 +403,23 @@ export default function Layout() {
               console.error('Failed to play custom notification sound:', error);
             }
 
-            setOrderModalData({
-              title: remoteMessage.notification?.title || 'New Order Available!',
-              body: remoteMessage.notification?.body || 'A new delivery order request is waiting for you.',
-            });
-            setOrderModalVisible(true);
+            // Refresh orders count and list in app
+            DeviceEventEmitter.emit('refreshOrdersCount');
+
+            // Trigger local top banner notification popup
+            try {
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: remoteMessage.notification?.title || 'New Order Available!',
+                  body: remoteMessage.notification?.body || 'A new delivery order request is available.',
+                  sound: 'ordernotification.wav',
+                  channelId: 'order_notifications',
+                },
+                trigger: null,
+              });
+            } catch (notifErr) {
+              console.warn('Local notification trigger warning:', notifErr);
+            }
           }
         });
 
@@ -481,57 +502,6 @@ export default function Layout() {
           }}
         />
       </Tabs>
-
-      {/* Premium Custom Styled New Order Modal Alert */}
-      <Modal
-        visible={orderModalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => {
-          stopSound();
-          setOrderModalVisible(false);
-        }}
-      >
-        <View style={styles.orderModalOverlay}>
-          <View style={styles.orderModalCard}>
-            <View style={styles.orderModalHeaderBadge}>
-              <Ionicons name="notifications" size={16} color="#FFFFFF" />
-              <Text style={styles.orderModalHeaderBadgeText}>NEW ORDER ALERT</Text>
-            </View>
-
-            <Text style={styles.orderModalTitle}>{orderModalData.title}</Text>
-            <Text style={styles.orderModalBody}>{orderModalData.body}</Text>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.orderModalAcceptBtn,
-                pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
-              ]}
-              onPress={() => {
-                stopSound();
-                setOrderModalVisible(false);
-                router.push('/orders');
-              }}
-            >
-              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.orderModalAcceptBtnText}>VIEW & ACCEPT ORDER</Text>
-            </Pressable>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.orderModalDismissBtn,
-                pressed && { opacity: 0.8 }
-              ]}
-              onPress={() => {
-                stopSound();
-                setOrderModalVisible(false);
-              }}
-            >
-              <Text style={styles.orderModalDismissBtnText}>DISMISS</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
