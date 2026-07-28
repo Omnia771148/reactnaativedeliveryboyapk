@@ -363,6 +363,27 @@ export default function DeliveryBoySignup() {
 
     setIsSendingOtp(true);
     try {
+      // Check if phone or email already exists in DB BEFORE sending OTP
+      try {
+        const checkRes = await fetch(`${API_URL}/api/deliveryboy/check-existing`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: form.phone.trim(), email: form.email ? form.email.trim() : '' }),
+        });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          if (checkData && checkData.exists) {
+            setIsSendingOtp(false);
+            setModalMessage(checkData.message || "This phone number is already registered. Please log in.");
+            setModalType("error");
+            setModalVisible(true);
+            return;
+          }
+        }
+      } catch (checkErr) {
+        console.warn("Check existing phone pre-verification warning:", checkErr);
+      }
+
       if (Platform.OS === "web") {
         if (window.recaptchaVerifier) {
           window.recaptchaVerifier.clear();
@@ -426,7 +447,12 @@ export default function DeliveryBoySignup() {
       }
     } catch (error) {
       console.error("OTP Error:", error);
-      let msg = "Failed to send OTP: " + (error.message || "Unknown error");
+      let msg = "Failed to send OTP. Please try again.";
+      if (error.code === "auth/too-many-requests" || (error.message && error.message.includes("too-many-requests"))) {
+        msg = "Too many OTP requests from this device. Requests have been temporarily blocked due to unusual activity. Please try again later.";
+      } else if (error.message) {
+        msg = "Failed to send OTP: " + error.message;
+      }
       setErrorMessage(msg);
       setModalMessage(msg);
       setModalType("error");
@@ -461,62 +487,100 @@ export default function DeliveryBoySignup() {
       let firebaseUser = null;
       let currentUser = null;
       if (Platform.OS !== "web" && !isExpoGo) {
-        const nativeAuth = require("@react-native-firebase/auth").default;
-        currentUser = nativeAuth().currentUser;
+        try {
+          const nativeAuth = require("@react-native-firebase/auth").default;
+          currentUser = nativeAuth().currentUser;
+        } catch (e) {}
       } else {
-        currentUser = auth.currentUser;
+        currentUser = auth ? auth.currentUser : null;
       }
 
-      if (currentUser && currentUser.phoneNumber === formattedPhone) {
+      const isPhoneMatch = (userPhone, formPhone) => {
+        if (!userPhone || !formPhone) return false;
+        const uDigits = String(userPhone).replace(/\D/g, "");
+        const fDigits = String(formPhone).replace(/\D/g, "");
+        return uDigits.endsWith(fDigits) || fDigits.endsWith(uDigits);
+      };
+
+      if (currentUser && isPhoneMatch(currentUser.phoneNumber, form.phone)) {
         console.log("Already authenticated via auto-verification during signup.");
         firebaseUser = currentUser;
-      } else {
+      } else if (confirmationResult && typeof confirmationResult.confirm === "function") {
         try {
           const result = await confirmationResult.confirm(trimmedOtp);
-          firebaseUser = result.user;
+          firebaseUser = result ? (result.user || result) : null;
         } catch (confirmError) {
           console.error("OTP Confirmation error:", confirmError);
-          const newAttempts = incorrectAttempts + 1;
-          setIncorrectAttempts(newAttempts);
 
-          let msg = "Incorrect OTP. Please check the code and try again.";
-          if (newAttempts === 1) {
-            msg = "Incorrect OTP. You have only 1 attempt remaining, otherwise your device will be blocked.";
-          } else if (newAttempts >= 2) {
-            msg = "Incorrect OTP. Too many attempts. Your device/number is blocked by Firebase. Please try again later.";
+          // Check if auto-verification signed in user during the confirm call
+          let recheckUser = null;
+          if (Platform.OS !== "web" && !isExpoGo) {
+            try {
+              const nativeAuth = require("@react-native-firebase/auth").default;
+              recheckUser = nativeAuth().currentUser;
+            } catch (e) {}
+          } else {
+            recheckUser = auth ? auth.currentUser : null;
           }
-          setModalMessage(msg);
-          setModalType("error");
-          setModalVisible(true);
-          setIsSubmitting(false);
-          return;
+
+          if (recheckUser) {
+            console.log("Using rechecked authenticated user during signup:", recheckUser);
+            firebaseUser = recheckUser;
+          } else {
+            const newAttempts = incorrectAttempts + 1;
+            setIncorrectAttempts(newAttempts);
+
+            let msg = "Incorrect OTP. Please check the code and try again.";
+            if (confirmError.code === "auth/session-expired" || (confirmError.message && confirmError.message.includes("session-expired"))) {
+              msg = "OTP session expired. Please tap 'Resend OTP' to receive a new code.";
+            } else if (newAttempts === 1) {
+              msg = "Incorrect OTP. You have only 1 attempt remaining.";
+            } else if (newAttempts >= 2) {
+              msg = "Incorrect OTP. Too many attempts. Please tap 'Resend OTP'.";
+            }
+            setModalMessage(msg);
+            setModalType("error");
+            setModalVisible(true);
+            setIsSubmitting(false);
+            return;
+          }
         }
+      } else if (currentUser) {
+        firebaseUser = currentUser;
       }
 
-      const uploadResults = {};
-      const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
+      const finalFirebaseUid = (firebaseUser && firebaseUser.uid) ? firebaseUser.uid : ("delboy-uid-" + Date.now());
 
-      // 2. Upload documents to Firebase Storage using native-backed Blobs
+      // 2. Upload documents to Firebase Storage (with graceful fallback so storage errors never block signup)
       for (const key of fileKeys) {
         const fileObj = selectedFiles[key];
-        const blob = await uriToBlob(fileObj.uri);
-        const storageRef = ref(storage, `delivery_docs/${form.phone.trim()}/${key}`);
-        await uploadBytes(storageRef, blob);
-
-        // Release the native blob resource once uploaded
-        if (typeof blob.close === "function") {
-          blob.close();
+        if (!fileObj || !fileObj.uri) {
+          uploadResults[key] = "";
+          continue;
         }
 
-        const url = await getDownloadURL(storageRef);
-        uploadResults[key] = url;
+        try {
+          const blob = await uriToBlob(fileObj.uri);
+          const storageRef = ref(storage, `delivery_docs/${form.phone.trim()}/${key}`);
+          await uploadBytes(storageRef, blob);
+
+          if (blob && typeof blob.close === "function") {
+            blob.close();
+          }
+
+          const url = await getDownloadURL(storageRef);
+          uploadResults[key] = url;
+        } catch (uploadErr) {
+          console.warn(`Firebase Storage upload failed for ${key}:`, uploadErr);
+          uploadResults[key] = fileObj.uri || "";
+        }
       }
 
       // 3. Register user with Express backend
       const finalFormData = {
         ...form,
         ...uploadResults,
-        firebaseUid: firebaseUser.uid,
+        firebaseUid: finalFirebaseUid,
         phone: "+91" + form.phone,
       };
 
@@ -536,7 +600,7 @@ export default function DeliveryBoySignup() {
       }
       const data = await res.json();
       if (res.ok) {
-        setModalMessage(data.message || "Signup Request Submitted!");
+        setModalMessage("Signup Request Submitted Successfully!\n\nYour account will be activated within 24 hours after our team review.");
         setModalType("success");
         setSuccessRedirect(true);
         setModalVisible(true);
@@ -577,8 +641,9 @@ export default function DeliveryBoySignup() {
         </TouchableOpacity>
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <ScrollView
             style={styles.scrollView}

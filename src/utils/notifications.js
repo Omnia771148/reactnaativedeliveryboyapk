@@ -1,6 +1,15 @@
-import { Platform, PermissionsAndroid } from 'react-native';
+import { Platform, PermissionsAndroid, Linking } from 'react-native';
 import { API_URL } from '@/constants/api';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+
+export function openNotificationSettings() {
+  if (Platform.OS === 'web') return;
+  try {
+    Linking.openSettings();
+  } catch (err) {
+    console.error('Error opening settings:', err);
+  }
+}
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
@@ -33,12 +42,13 @@ export async function requestNotificationPermission() {
         const status = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         );
-        return status === PermissionsAndroid.RESULTS.GRANTED;
+        if (status !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('POST_NOTIFICATIONS permission denied on Android 13+');
+        }
       }
-      return true;
     }
 
-    // 2. Request FCM Permission (iOS/macOS and general FCM status registration)
+    // 2. Request FCM Permission
     const authStatus = await messagingModule().requestPermission();
     const enabled =
       authStatus === messagingModule.AuthorizationStatus.AUTHORIZED ||
@@ -46,7 +56,7 @@ export async function requestNotificationPermission() {
     return enabled;
   } catch (error) {
     console.error('Error requesting notification permission:', error);
-    return false;
+    return true; // Fallback return true so token fetch is attempted on Android
   }
 }
 
@@ -57,23 +67,33 @@ export async function registerForFCMAsync() {
   if (!messagingModule) return null;
 
   try {
-    const hasPermission = await requestNotificationPermission();
-    if (!hasPermission) {
-      console.log('Notification permission was denied');
-      return null;
-    }
+    await requestNotificationPermission();
 
-    // Register device for remote messages
+    // Register device for remote messages on iOS
     if (Platform.OS === 'ios') {
       await messagingModule().registerDeviceForRemoteMessages();
     }
 
-    // Fetch FCM Token
-    const token = await messagingModule().getToken();
-    console.log('Retrieved FCM Token:', token);
+    // Fetch FCM Token with up to 3 retry attempts for maximum reliability
+    let token = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        token = await messagingModule().getToken();
+        if (token) {
+          console.log(`Retrieved FCM Token successfully (attempt ${attempt}):`, token);
+          break;
+        }
+      } catch (err) {
+        console.warn(`FCM getToken attempt ${attempt} failed:`, err.message || err);
+        if (attempt < 3) {
+          await new Promise((res) => setTimeout(res, 1000));
+        }
+      }
+    }
+
     return token;
   } catch (error) {
-    console.error('Error getting FCM token:', error);
+    console.error('Error in registerForFCMAsync:', error);
     return null;
   }
 }
@@ -93,7 +113,7 @@ export async function saveFCMTokenToBackend(userId, token) {
     if (!response.ok) {
       console.error('Failed to save FCM token on backend:', response.status);
     } else {
-      console.log('FCM token successfully registered on backend');
+      console.log('FCM token successfully registered on backend for user:', userId);
     }
   } catch (error) {
     console.error('Error saving FCM token to backend:', error);

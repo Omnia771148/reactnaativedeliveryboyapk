@@ -2,9 +2,10 @@ import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Custom User Profile Icon built using standard Views to match color guidelines exactly
@@ -129,13 +130,22 @@ export default function HomeScreen() {
       }
 
       if (res.ok) {
-        // Save user fields to AsyncStorage (localstorage)
-        await AsyncStorage.setItem('userid', res.data.user._id ? String(res.data.user._id) : '');
+        const userIdStr = res.data.user._id ? String(res.data.user._id) : '';
+        await AsyncStorage.setItem('userid', userIdStr);
         await AsyncStorage.setItem('name', res.data.user.name ? String(res.data.user.name) : '');
         await AsyncStorage.setItem('phone', res.data.user.phone ? String(res.data.user.phone) : '');
         await AsyncStorage.setItem('isActive', String(!!res.data.user.isActive));
         await AsyncStorage.setItem('updatedAt', res.data.user.updatedAt ? String(res.data.user.updatedAt) : '');
         await AsyncStorage.setItem('lastLoginDate', new Date().toISOString());
+
+        // Register FCM Token & save to backend for instant notifications
+        if (userIdStr) {
+          registerForFCMAsync().then((fcmToken) => {
+            if (fcmToken) {
+              saveFCMTokenToBackend(userIdStr, fcmToken);
+            }
+          }).catch(console.error);
+        }
 
         console.log('Successfully saved user session:', res.data.user);
         router.replace('/homepage');
@@ -170,85 +180,97 @@ export default function HomeScreen() {
       </View>
 
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.contentContainer}>
-          {/* Header Title: LEEVON */}
-          <View style={styles.logoContainer}>
-            <Text adjustsFontSizeToFit numberOfLines={1} style={styles.logoText}>LEEVON DELIVERY</Text>
-          </View>
-
-          {/* Form Inputs Container */}
-          <View style={styles.formContainer}>
-            {/* Mobile Number Input Wrapper */}
-            <View style={styles.inputWrapper}>
-              <UserIcon color="#A5A5A5" />
-              <TextInput
-                style={styles.input}
-                placeholder="Mobile number"
-                placeholderTextColor="#A5A5A5"
-                keyboardType="number-pad"
-                value={mobileNumber}
-                onChangeText={(text) => setMobileNumber(text.replace(/[^0-9]/g, ''))}
-                editable={!loading}
-                maxLength={10}
-              />
-            </View>
-
-            {/* Password Input Wrapper */}
-            <View style={styles.inputWrapper}>
-              <LockIcon color="#E55B49" />
-              <TextInput
-                style={[styles.input, styles.passwordInput]}
-                placeholder="Password"
-                placeholderTextColor="#E55B49"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={setPassword}
-                editable={!loading}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={showPassword ? "eye-outline" : "eye-off-outline"}
-                  size={20}
-                  color="#E55B49"
-                />
-              </TouchableOpacity>
-            </View>
-
-            {/* Forgot Password Link */}
-            <TouchableOpacity
-              style={styles.forgotPasswordButton}
-              activeOpacity={0.7}
-              disabled={loading}
-              onPress={() => router.push('/forgot-password')}
-            >
-              <Text style={styles.forgotPasswordText}>Forgot password ?</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Login Button Container */}
-          <TouchableOpacity
-            style={[styles.loginButton, loading && styles.disabledButton]}
-            activeOpacity={0.85}
-            onPress={handleLogin}
-            disabled={loading}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1, width: '100%' }}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
           >
-            <Text style={styles.loginButtonText}>
-              {loading ? 'Logging in...' : 'Login'}
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.contentContainer}>
+              {/* Header Title: LEEVON */}
+              <View style={styles.logoContainer}>
+                <Text adjustsFontSizeToFit numberOfLines={1} style={styles.logoText}>LEEVON DELIVERY</Text>
+              </View>
 
-          {/* Footer Create Account Link */}
-          <View style={styles.footerContainer}>
-            <Text style={styles.footerText}>
-              Don’t have account?{' '}
-              <Text style={styles.createText} onPress={() => router.push('/signup')}>create</Text>
-            </Text>
-          </View>
-        </View>
+              {/* Form Inputs Container */}
+              <View style={styles.formContainer}>
+                {/* Mobile Number Input Wrapper */}
+                <View style={styles.inputWrapper}>
+                  <UserIcon color="#A5A5A5" />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Mobile number"
+                    placeholderTextColor="#A5A5A5"
+                    keyboardType="number-pad"
+                    value={mobileNumber}
+                    onChangeText={(text) => setMobileNumber(text.replace(/[^0-9]/g, ''))}
+                    editable={!loading}
+                    maxLength={10}
+                  />
+                </View>
+
+                {/* Password Input Wrapper */}
+                <View style={styles.inputWrapper}>
+                  <LockIcon color="#E55B49" />
+                  <TextInput
+                    style={[styles.input, styles.passwordInput]}
+                    placeholder="Password"
+                    placeholderTextColor="#E55B49"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    editable={!loading}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={showPassword ? "eye-outline" : "eye-off-outline"}
+                      size={20}
+                      color="#E55B49"
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Forgot Password Link */}
+                <TouchableOpacity
+                  style={styles.forgotPasswordButton}
+                  activeOpacity={0.7}
+                  disabled={loading}
+                  onPress={() => router.push('/forgot-password')}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot password ?</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Login Button Container */}
+              <TouchableOpacity
+                style={[styles.loginButton, loading && styles.disabledButton]}
+                activeOpacity={0.85}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                <Text style={styles.loginButtonText}>
+                  {loading ? 'Logging in...' : 'Login'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Footer Create Account Link */}
+              <View style={styles.footerContainer}>
+                <Text style={styles.footerText}>
+                  Don’t have account?{' '}
+                  <Text style={styles.createText} onPress={() => router.push('/signup')}>create</Text>
+                </Text>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
 
       {/* Custom Error Modal matching the screenshot layout */}
@@ -315,8 +337,13 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
+    width: '100%',
+  },
+  scrollContainer: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingVertical: 24,
   },
   contentContainer: {
     width: '100%',

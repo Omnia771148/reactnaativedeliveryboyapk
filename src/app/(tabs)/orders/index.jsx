@@ -61,24 +61,50 @@ export default function OrdersScreen() {
   const ordersRef = useRef([]);
   const isFirstFetch = useRef(true);
 
+  const soundTimeoutRef = useRef(null);
+  const isPlayingLoopRef = useRef(false);
+
+  const stopOrderSound = async () => {
+    isPlayingLoopRef.current = false;
+    if (soundTimeoutRef.current) {
+      clearTimeout(soundTimeoutRef.current);
+      soundTimeoutRef.current = null;
+    }
+  };
+
   const playSound = async () => {
     if (!Audio) {
       console.warn('Audio is not available, skipping playSound.');
       return;
     }
-    try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('@/assets/ordernotification.wav'),
-        { shouldPlay: true }
-      );
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          sound.unloadAsync().catch((err) => console.error('Error unloading sound:', err));
-        }
-      });
-    } catch (error) {
-      console.error('Failed to play order notification sound:', error);
-    }
+    await stopOrderSound();
+    isPlayingLoopRef.current = true;
+
+    const playOneCycle = async () => {
+      if (!isPlayingLoopRef.current) return;
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          require('@/assets/ordernotification.wav'),
+          { shouldPlay: true, isLooping: false }
+        );
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+            if (isPlayingLoopRef.current) {
+              soundTimeoutRef.current = setTimeout(() => {
+                if (isPlayingLoopRef.current) {
+                  playOneCycle();
+                }
+              }, 4000);
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Failed to play order notification sound:', error);
+      }
+    };
+
+    playOneCycle();
   };
 
   useEffect(() => {
@@ -359,16 +385,15 @@ export default function OrdersScreen() {
       const deliveryBoyPhone = await AsyncStorage.getItem('phone');
 
       if (!deliveryBoyId || !deliveryBoyName || !deliveryBoyPhone) {
-        customAlert('Error', 'Delivery partner profile details not found. Please log in again.');
+        setErrorModalMessage('Delivery partner profile details not found. Please log in again.');
+        setErrorModalVisible(true);
         return;
       }
 
       // Check locally if there's an active order first
       if (hasActiveOrder) {
-        customAlert(
-          'Active Order Alert',
-          'You already have an active order. Please complete it to accept a second order.'
-        );
+        setErrorModalMessage('You already have an active order.\n\nPlease complete your current order before accepting a new one.');
+        setErrorModalVisible(true);
         return;
       }
 
@@ -381,10 +406,8 @@ export default function OrdersScreen() {
             const activeData = JSON.parse(text);
             if (activeData && activeData.orderId) {
               setHasActiveOrder(true);
-              customAlert(
-                'Active Order Alert',
-                'You already have an active order. Please complete it to accept a second order.'
-              );
+              setErrorModalMessage('You already have an active order.\n\nPlease complete your current order before accepting a new one.');
+              setErrorModalVisible(true);
               return;
             }
           }
@@ -442,19 +465,15 @@ export default function OrdersScreen() {
           setErrorModalMessage("sorry the order was already accepted by other delivery boy\n\nbetter luck next time");
           setErrorModalVisible(true);
         } else {
-          customAlert('Error', data.message || 'Failed to accept order.', [
-            {
-              text: 'OK',
-              onPress: () => {
-                fetchOrders();
-              },
-            },
-          ]);
+          setErrorModalMessage(data.message || 'Failed to accept order.');
+          setErrorModalVisible(true);
+          fetchOrders();
         }
       }
     } catch (error) {
       console.error('Failed to accept order:', error);
-      customAlert('Error', 'Network error. Please try again.');
+      setErrorModalMessage('Network error. Please check your connection and try again.');
+      setErrorModalVisible(true);
     } finally {
       setUpdating(false);
     }
@@ -466,7 +485,8 @@ export default function OrdersScreen() {
     try {
       const userId = await AsyncStorage.getItem('userid');
       if (!userId) {
-        customAlert('Error', 'Delivery boy ID not found in local storage. Please log in again.');
+        setErrorModalMessage('Delivery boy ID not found in local storage. Please log in again.');
+        setErrorModalVisible(true);
         return;
       }
 
@@ -489,11 +509,13 @@ export default function OrdersScreen() {
         } catch (_e) {
           errorData = { message: 'Server is starting up or returned an invalid response. Please try again in a few seconds.' };
         }
-        customAlert('Error', errorData.message || 'Failed to reject order');
+        setErrorModalMessage(errorData.message || 'Failed to reject order');
+        setErrorModalVisible(true);
       }
     } catch (error) {
       console.error('Failed to reject order:', error);
-      customAlert('Error', 'Network error. Please try again.');
+      setErrorModalMessage('Network error. Please try again.');
+      setErrorModalVisible(true);
     } finally {
       setUpdating(false);
     }
@@ -656,7 +678,7 @@ export default function OrdersScreen() {
                 fetchOrders();
               }}
             >
-              <Text style={styles.modalButtonText}>Try Again</Text>
+              <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>

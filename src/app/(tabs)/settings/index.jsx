@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { API_URL } from '@/constants/api';
+import { LoadingOverlay } from '@/components/loading-overlay';
+import { stopDeliveryForegroundService } from '@/utils/foregroundService';
 
 export default function SettingsScreen() {
   const [user, setUser] = useState({ name: 'sai', phone: '6301366183' });
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Load name and phone from AsyncStorage on mount
   useEffect(() => {
@@ -37,6 +40,7 @@ export default function SettingsScreen() {
   // Perform actual logout logic
   const confirmPerformLogout = async () => {
     setLogoutModalVisible(false);
+    setLoading(true);
     try {
       // Sign out of Firebase Auth to prevent stale sessions
       if (Platform.OS !== 'web') {
@@ -85,6 +89,13 @@ export default function SettingsScreen() {
         }
       }
 
+      // 3. Stop Android Foreground Service notification from status bar
+      try {
+        await stopDeliveryForegroundService();
+      } catch (fgErr) {
+        console.error('Error stopping foreground service during logout:', fgErr);
+      }
+
       await AsyncStorage.multiRemove([
         'userid',
         'name',
@@ -96,6 +107,7 @@ export default function SettingsScreen() {
       router.replace('/');
     } catch (error) {
       console.error('Error logging out:', error);
+      setLoading(false);
       if (Platform.OS === 'web') {
         alert('Failed to log out. Please try again.');
       } else {
@@ -240,6 +252,9 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* App's custom Loading Overlay */}
+      <LoadingOverlay visible={loading} />
     </View>
   );
 }

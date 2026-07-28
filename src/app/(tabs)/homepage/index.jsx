@@ -1,6 +1,8 @@
 import { BrandHeader } from '@/components/brand-header';
-import { API_URL } from '@/constants/api';
+import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { styles } from '@/styles/homepage';
+import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { requestNotificationPermission, registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -126,13 +128,22 @@ export default function HomepageScreen() {
     };
   }, [navigation, userid, fetchUserStatusAndEarnings]);
 
-  // Trigger sliding animation when active state changes
+  // Trigger sliding animation & control background service when active state changes
   useEffect(() => {
     Animated.timing(animatedValue, {
       toValue: isActive ? 138 : 8,
       duration: 250,
       useNativeDriver: true,
     }).start();
+
+    if (isActive) {
+      startDeliveryForegroundService(
+        "🟢 Delivery Boy — ON",
+        "Searching for nearby orders..."
+      );
+    } else {
+      stopDeliveryForegroundService();
+    }
   }, [isActive, animatedValue]);
 
   // Sync state update with MongoDB backend API
@@ -142,8 +153,16 @@ export default function HomepageScreen() {
     setUpdating(true);
     const targetStatus = !isActive;
 
+    if (targetStatus) {
+      try {
+        await requestNotificationPermission();
+      } catch (permErr) {
+        console.warn('Error requesting notification permission on toggle:', permErr);
+      }
+    }
+
     try {
-      const response = await fetch(`${API_URL}/api/users/${userid}/status`, {
+      const response = await fetchWithTimeout(`${API_URL}/api/users/${userid}/status`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -151,7 +170,7 @@ export default function HomepageScreen() {
         body: JSON.stringify({
           isActive: targetStatus,
         }),
-      });
+      }, 30000);
 
       let data = {};
       try {
@@ -168,14 +187,19 @@ export default function HomepageScreen() {
         await fetchEarnings(userid);
 
         if (targetStatus) {
+          registerForFCMAsync().then((token) => {
+            if (token && userid) {
+              saveFCMTokenToBackend(userid, token);
+            }
+          }).catch(console.error);
+
           router.replace('/orders');
         }
       } else {
-        Alert.alert('Error', data.message || 'Failed to update active status.');
+        console.warn('Status update warning:', data.message);
       }
     } catch (error) {
       console.error('Error toggling status:', error);
-      Alert.alert('Error', 'Network error. Check if your backend server is running.');
     } finally {
       setUpdating(false);
     }
@@ -221,7 +245,7 @@ export default function HomepageScreen() {
               ]}
             />
 
-            {/* OPEN Text */}
+            {/* ON Text */}
             <Animated.Text
               style={[
                 styles.toggleText,
@@ -229,10 +253,10 @@ export default function HomepageScreen() {
                 { opacity: openOpacity }
               ]}
             >
-              OPEN
+              ON
             </Animated.Text>
 
-            {/* CLOSED Text */}
+            {/* OFF Text */}
             <Animated.Text
               style={[
                 styles.toggleText,
@@ -240,7 +264,7 @@ export default function HomepageScreen() {
                 { opacity: closedOpacity }
               ]}
             >
-              CLOSED
+              OFF
             </Animated.Text>
 
             {/* Sliding White Circle */}

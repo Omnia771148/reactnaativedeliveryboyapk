@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '@/constants/api';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
-import { isBatteryOptimizationEnabled, requestIgnoreBatteryOptimization, openAppDetailsSettings } from '@/utils/batteryOptimization';
+import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 
 let Audio = null;
@@ -252,34 +252,31 @@ function CustomTabBar({ state, descriptors, navigation }) {
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 export default function Layout() {
-  const [batteryOptimized, setBatteryOptimized] = useState(false);
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [orderModalData, setOrderModalData] = useState({ title: '', body: '' });
 
   useEffect(() => {
-    let active = true;
-    const checkBatteryStatus = async () => {
-      const isOptimized = await isBatteryOptimizationEnabled();
-      if (active) {
-        setBatteryOptimized(isOptimized);
-      }
-    };
-
-    checkBatteryStatus();
-
-    const subscription = AppState.addEventListener("change", (nextAppState) => {
-      if (nextAppState === "active") {
-        checkBatteryStatus();
+    // Restore foreground service if driver was OPEN when app was last open
+    AsyncStorage.getItem('isActive').then((val) => {
+      if (val === 'true') {
+        startDeliveryForegroundService(
+          "🟢 Delivery Boy — ON",
+          "Searching for nearby orders..."
+        );
       }
     });
-
-    return () => {
-      active = false;
-      subscription.remove();
-    };
   }, []);
 
   const currentSoundRef = useRef(null);
+  const soundTimeoutRef = useRef(null);
+  const isPlayingLoopRef = useRef(false);
 
   const stopSound = async () => {
+    isPlayingLoopRef.current = false;
+    if (soundTimeoutRef.current) {
+      clearTimeout(soundTimeoutRef.current);
+      soundTimeoutRef.current = null;
+    }
     if (currentSoundRef.current) {
       try {
         await currentSoundRef.current.stopAsync();
@@ -289,6 +286,43 @@ export default function Layout() {
       }
       currentSoundRef.current = null;
     }
+  };
+
+  const playRepeatingSoundWithBreak = async () => {
+    await stopSound();
+    isPlayingLoopRef.current = true;
+
+    const playOneCycle = async () => {
+      if (!isPlayingLoopRef.current || !Audio) return;
+
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          require('../../../assets/ordernotification.wav'),
+          { shouldPlay: true, isLooping: false }
+        );
+        currentSoundRef.current = sound;
+
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+            currentSoundRef.current = null;
+
+            if (isPlayingLoopRef.current) {
+              // Wait 4 seconds after sound completes before playing again
+              soundTimeoutRef.current = setTimeout(() => {
+                if (isPlayingLoopRef.current) {
+                  playOneCycle();
+                }
+              }, 4000);
+            }
+          }
+        });
+      } catch (err) {
+        console.error('Failed to play custom notification sound:', err);
+      }
+    };
+
+    playOneCycle();
   };
 
   useEffect(() => {
@@ -340,16 +374,8 @@ export default function Layout() {
 
             try {
               if (Audio) {
-                // Stop any previous playing sound instance
-                await stopSound();
-
-                // Play the custom WAV sound file continuously in a loop until accepted/rejected/dismissed
-                const { sound } = await Audio.Sound.createAsync(
-                  require('../../../assets/ordernotification.wav'),
-                  { isLooping: true }
-                );
-                currentSoundRef.current = sound;
-                await sound.playAsync();
+                // Play notification sound once, wait 4s, and repeat until accepted/rejected
+                await playRepeatingSoundWithBreak();
               } else {
                 console.warn('Audio is not available, skipping custom notification sound.');
               }
@@ -357,28 +383,11 @@ export default function Layout() {
               console.error('Failed to play custom notification sound:', error);
             }
 
-            // Display visual notification alert popup in the foreground
-            Alert.alert(
-              remoteMessage.notification?.title || 'New Order Available!',
-              remoteMessage.notification?.body || 'Check the orders screen for details.',
-              [
-                {
-                  text: 'View Live Orders',
-                  onPress: () => {
-                    stopSound();
-                    router.push('/liveorders');
-                  }
-                },
-                {
-                  text: 'Dismiss',
-                  style: 'cancel',
-                  onPress: () => {
-                    stopSound();
-                  }
-                }
-              ],
-              { cancelable: true }
-            );
+            setOrderModalData({
+              title: remoteMessage.notification?.title || 'New Order Available!',
+              body: remoteMessage.notification?.body || 'A new delivery order request is waiting for you.',
+            });
+            setOrderModalVisible(true);
           }
         });
 
@@ -387,7 +396,7 @@ export default function Layout() {
           if (isMounted) {
             console.log('Notification caused app to open from background:', remoteMessage);
             stopSound();
-            router.push('/liveorders');
+            router.push('/orders');
           }
         });
 
@@ -398,7 +407,7 @@ export default function Layout() {
             if (remoteMessage && isMounted) {
               console.log('Notification caused app to open from quit state:', remoteMessage);
               stopSound();
-              router.push('/liveorders');
+              router.push('/orders');
             }
           });
 
@@ -409,81 +418,110 @@ export default function Layout() {
 
     setupNotifications();
 
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        setupNotifications();
+      }
+    });
+
     return () => {
       isMounted = false;
       stopSound();
       stopSoundSub.remove();
+      appStateSub.remove();
       if (unsubscribeMessage) unsubscribeMessage();
       if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();
       if (unsubscribeNotificationOpened) unsubscribeNotificationOpened();
     };
   }, []);
 
-  if (batteryOptimized) {
-    return (
-      <View style={styles.blockContainer}>
-        <View style={styles.blockCard}>
-          <FontAwesome name="exclamation-triangle" size={48} color="#C53030" style={{ marginBottom: 16 }} />
-          <Text style={styles.blockTitle}>Action Required</Text>
-          <Text style={styles.blockDescription}>
-            In order to receive delivery requests and order notifications in the background, you must change your battery settings to "No Restrictions".
-          </Text>
-          <Pressable 
-            onPress={() => requestIgnoreBatteryOptimization()}
-            style={({ pressed }) => [
-              styles.blockButton,
-              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
-            ]}
-          >
-            <Text style={styles.blockButtonText}>{"ALLOW \"NO RESTRICTIONS\""}</Text>
-          </Pressable>
 
-          <Pressable 
-            onPress={() => openAppDetailsSettings()}
-            style={({ pressed }) => [
-              styles.blockSecondaryButton,
-              pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
-            ]}
-          >
-            <Text style={styles.blockSecondaryButtonText}>{"OPEN APP SETTINGS (Xiaomi / Samsung)"}</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
 
   return (
-    <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen
-        name="homepage/index"
-        options={{
-          title: 'Home',
+    <View style={{ flex: 1 }}>
+      <Tabs
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={{
+          headerShown: false,
         }}
-      />
-      <Tabs.Screen
-        name="orders/index"
-        options={{
-          title: 'Orders',
+      >
+        <Tabs.Screen
+          name="homepage/index"
+          options={{
+            title: 'Home',
+          }}
+        />
+        <Tabs.Screen
+          name="orders/index"
+          options={{
+            title: 'Orders',
+          }}
+        />
+        <Tabs.Screen
+          name="liveorders/index"
+          options={{
+            title: 'Live Orders',
+          }}
+        />
+        <Tabs.Screen
+          name="settings"
+          options={{
+            title: 'Settings',
+          }}
+        />
+      </Tabs>
+
+      {/* Premium Custom Styled New Order Modal Alert */}
+      <Modal
+        visible={orderModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {
+          stopSound();
+          setOrderModalVisible(false);
         }}
-      />
-      <Tabs.Screen
-        name="liveorders/index"
-        options={{
-          title: 'Live Orders',
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-        }}
-      />
-    </Tabs>
+      >
+        <View style={styles.orderModalOverlay}>
+          <View style={styles.orderModalCard}>
+            <View style={styles.orderModalHeaderBadge}>
+              <Ionicons name="notifications" size={16} color="#FFFFFF" />
+              <Text style={styles.orderModalHeaderBadgeText}>NEW ORDER ALERT</Text>
+            </View>
+
+            <Text style={styles.orderModalTitle}>{orderModalData.title}</Text>
+            <Text style={styles.orderModalBody}>{orderModalData.body}</Text>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.orderModalAcceptBtn,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.98 }] }
+              ]}
+              onPress={() => {
+                stopSound();
+                setOrderModalVisible(false);
+                router.push('/orders');
+              }}
+            >
+              <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.orderModalAcceptBtnText}>VIEW & ACCEPT ORDER</Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.orderModalDismissBtn,
+                pressed && { opacity: 0.8 }
+              ]}
+              onPress={() => {
+                stopSound();
+                setOrderModalVisible(false);
+              }}
+            >
+              <Text style={styles.orderModalDismissBtnText}>DISMISS</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -641,6 +679,91 @@ const styles = StyleSheet.create({
   },
   blockSecondaryButtonText: {
     color: '#2D3748',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  orderModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  orderModalCard: {
+    width: '100%',
+    backgroundColor: '#1E293B', // Rich dark slate card background
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#22C55E', // Glowing neon green border
+    shadowColor: '#22C55E',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  orderModalHeaderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#22C55E',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginBottom: 16,
+    gap: 6,
+  },
+  orderModalHeaderBadgeText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  orderModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  orderModalBody: {
+    fontSize: 15,
+    color: '#CBD5E1',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  orderModalAcceptBtn: {
+    width: '100%',
+    backgroundColor: '#16A34A',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderRadius: 14,
+    marginBottom: 12,
+    shadowColor: '#16A34A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  orderModalAcceptBtnText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 15,
+    letterSpacing: 0.5,
+  },
+  orderModalDismissBtn: {
+    width: '100%',
+    backgroundColor: '#334155',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  orderModalDismissBtnText: {
+    color: '#94A3B8',
     fontWeight: '600',
     fontSize: 13,
   },

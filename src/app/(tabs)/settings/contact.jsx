@@ -35,17 +35,31 @@ export default function ContactScreen() {
     setPrevOffset(currentOffset);
   };
 
-  // Handler to safely open URLs
+  // Handler to safely open URLs (direct trigger for dialpad tel: and mail client mailto:)
   const openLink = async (url) => {
     try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        console.warn('Cannot open URL:', url);
-      }
+      await Linking.openURL(url);
     } catch (error) {
       console.error('Error opening link:', error);
+    }
+  };
+
+  // Helper to open native app directly if installed, falling back to browser web URL
+  const openAppOrWeb = async (appUrl, webUrl) => {
+    try {
+      const supported = await Linking.canOpenURL(appUrl);
+      if (supported) {
+        await Linking.openURL(appUrl);
+      } else {
+        await Linking.openURL(webUrl);
+      }
+    } catch (error) {
+      console.warn('Native app open failed, opening web URL:', error);
+      try {
+        await Linking.openURL(webUrl);
+      } catch (webErr) {
+        console.error('Error opening web URL:', webErr);
+      }
     }
   };
 
@@ -86,12 +100,12 @@ export default function ContactScreen() {
             <TouchableOpacity 
               style={styles.detailItem} 
               activeOpacity={0.85}
-              onPress={() => openLink('tel:707610235')}
+              onPress={() => openLink('tel:+917207610235')}
             >
               <View style={styles.iconContainer}>
                 <Ionicons name="call" size={22} color="#000000" />
               </View>
-              <Text style={styles.valueText}>7207610235</Text>
+              <Text style={styles.valueText}>🇮🇳 +91 7207610235</Text>
             </TouchableOpacity>
 
             {/* Email */}
@@ -110,7 +124,7 @@ export default function ContactScreen() {
             <TouchableOpacity 
               style={styles.detailItem} 
               activeOpacity={0.85}
-              onPress={() => openLink('https://instagram.com')}
+              onPress={() => openAppOrWeb('instagram://user?username=leevondelivery', 'https://www.instagram.com/leevondelivery/')}
             >
               <View style={styles.iconContainer}>
                 <Ionicons name="logo-instagram" size={22} color="#000000" />
@@ -122,7 +136,7 @@ export default function ContactScreen() {
             <TouchableOpacity 
               style={styles.detailItem} 
               activeOpacity={0.85}
-              onPress={() => openLink('https://facebook.com')}
+              onPress={() => openAppOrWeb('fb://profile/61592677430083', 'https://www.facebook.com/profile.php?id=61592677430083')}
             >
               <View style={styles.iconContainer}>
                 <Ionicons name="logo-facebook" size={22} color="#000000" />
@@ -130,16 +144,40 @@ export default function ContactScreen() {
               <Text style={styles.valueText}>Facebook</Text>
             </TouchableOpacity>
 
+            {/* LinkedIn */}
+            <TouchableOpacity 
+              style={styles.detailItem} 
+              activeOpacity={0.85}
+              onPress={() => openAppOrWeb('linkedin://in/leevon-delivery-047511424', 'https://www.linkedin.com/in/leevon-delivery-047511424')}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="logo-linkedin" size={22} color="#000000" />
+              </View>
+              <Text style={styles.valueText}>LinkedIn</Text>
+            </TouchableOpacity>
+
             {/* Twitter / X */}
             <TouchableOpacity 
               style={styles.detailItem} 
               activeOpacity={0.85}
-              onPress={() => openLink('https://x.com')}
+              onPress={() => openAppOrWeb('twitter://user?screen_name=Leevondelivery', 'https://x.com/Leevondelivery')}
             >
               <View style={styles.iconContainer}>
                 <FontAwesome6 name="x-twitter" size={20} color="#000000" />
               </View>
               <Text style={styles.valueText}>Twitter</Text>
+            </TouchableOpacity>
+
+            {/* YouTube */}
+            <TouchableOpacity 
+              style={styles.detailItem} 
+              activeOpacity={0.85}
+              onPress={() => openAppOrWeb('vnd.youtube://www.youtube.com/@LeevonDelivery', 'https://www.youtube.com/@LeevonDelivery')}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="logo-youtube" size={22} color="#000000" />
+              </View>
+              <Text style={styles.valueText}>YouTube</Text>
             </TouchableOpacity>
 
           </View>
