@@ -256,6 +256,17 @@ export default function Layout() {
   const [orderModalData, setOrderModalData] = useState({ title: '', body: '' });
 
   useEffect(() => {
+    // Enable audio playback in background and lock screen
+    if (Audio) {
+      Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        staysActiveInBackground: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      }).catch((e) => console.warn('setAudioModeAsync warning:', e));
+    }
+
     // Restore foreground service if driver was OPEN when app was last open
     AsyncStorage.getItem('isActive').then((val) => {
       if (val === 'true') {
