@@ -470,13 +470,7 @@ export default function DeliveryBoySignup() {
   };
 
   const handleSubmit = async () => {
-    const trimmedOtp = otp.trim();
-    if (!trimmedOtp) {
-      setModalMessage("Please enter the OTP received.");
-      setModalType("error");
-      setModalVisible(true);
-      return;
-    }
+    const trimmedOtp = otp.trim().replace(/\D/g, "");
 
     setErrorMessage("");
     setIsSubmitting(true);
@@ -499,13 +493,20 @@ export default function DeliveryBoySignup() {
         if (!userPhone || !formPhone) return false;
         const uDigits = String(userPhone).replace(/\D/g, "");
         const fDigits = String(formPhone).replace(/\D/g, "");
-        return uDigits.endsWith(fDigits) || fDigits.endsWith(uDigits);
+        return uDigits.length >= 10 && fDigits.length >= 10 && (uDigits.endsWith(fDigits) || fDigits.endsWith(uDigits));
       };
 
       if (currentUser && isPhoneMatch(currentUser.phoneNumber, form.phone)) {
         console.log("Already authenticated via auto-verification during signup.");
         firebaseUser = currentUser;
       } else if (confirmationResult && typeof confirmationResult.confirm === "function") {
+        if (!trimmedOtp) {
+          setModalMessage("Please enter the OTP received.");
+          setModalType("error");
+          setModalVisible(true);
+          setIsSubmitting(false);
+          return;
+        }
         try {
           const result = await confirmationResult.confirm(trimmedOtp);
           firebaseUser = result ? (result.user || result) : null;
@@ -523,7 +524,7 @@ export default function DeliveryBoySignup() {
             recheckUser = auth ? auth.currentUser : null;
           }
 
-          if (recheckUser) {
+          if (recheckUser && isPhoneMatch(recheckUser.phoneNumber, form.phone)) {
             console.log("Using rechecked authenticated user during signup:", recheckUser);
             firebaseUser = recheckUser;
           } else {
@@ -547,11 +548,20 @@ export default function DeliveryBoySignup() {
         }
       } else if (currentUser) {
         firebaseUser = currentUser;
+      } else if (!trimmedOtp) {
+        setModalMessage("Please enter the OTP received.");
+        setModalType("error");
+        setModalVisible(true);
+        setIsSubmitting(false);
+        return;
       }
 
       const finalFirebaseUid = (firebaseUser && firebaseUser.uid) ? firebaseUser.uid : ("delboy-uid-" + Date.now());
 
       // 2. Upload documents to Firebase Storage (with graceful fallback so storage errors never block signup)
+      const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
+      const uploadResults = {};
+
       for (const key of fileKeys) {
         const fileObj = selectedFiles[key];
         if (!fileObj || !fileObj.uri) {
@@ -1066,7 +1076,7 @@ export default function DeliveryBoySignup() {
                 textContentType="oneTimeCode"
                 style={styles.otpInput}
                 value={otp}
-                onChangeText={setOtp}
+                onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
               />
               <TouchableOpacity
                 style={styles.signupBtn}

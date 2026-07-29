@@ -450,7 +450,7 @@ export default function ForgotPassword() {
                     autoComplete="sms-otp"
                     textContentType="oneTimeCode"
                     value={otp}
-                    onChangeText={setOtp}
+                    onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
                     style={styles.otpInputField}
                   />
 
