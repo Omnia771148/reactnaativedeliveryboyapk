@@ -363,13 +363,13 @@ export default function DeliveryBoySignup() {
 
     setIsSendingOtp(true);
     try {
-      // Check if phone or email already exists in DB BEFORE sending OTP
+      // Check if phone or email already exists in DB BEFORE sending OTP (4s max timeout to prevent cold-start delays)
       try {
-        const checkRes = await fetch(`${API_URL}/api/deliveryboy/check-existing`, {
+        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-existing`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: form.phone.trim(), email: form.email ? form.email.trim() : '' }),
-        });
+        }, 4000);
         if (checkRes.ok) {
           const checkData = await checkRes.json();
           if (checkData && checkData.exists) {
@@ -381,7 +381,7 @@ export default function DeliveryBoySignup() {
           }
         }
       } catch (checkErr) {
-        console.warn("Check existing phone pre-verification warning:", checkErr);
+        console.warn("Check existing phone pre-verification warning/timeout:", checkErr);
       }
 
       if (Platform.OS === "web") {
@@ -470,6 +470,7 @@ export default function DeliveryBoySignup() {
   };
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     const trimmedOtp = otp.trim().replace(/\D/g, "");
 
     setErrorMessage("");
@@ -589,9 +590,10 @@ export default function DeliveryBoySignup() {
       // 3. Register user with Express backend
       const finalFormData = {
         ...form,
+        email: form.email ? form.email.trim().toLowerCase() : '',
         ...uploadResults,
         firebaseUid: finalFirebaseUid,
-        phone: "+91" + form.phone,
+        phone: "+91" + form.phone.trim(),
       };
 
       const res = await fetchWithTimeout(`${API_URL}/api/deliveryboy/signup`, {
@@ -1079,11 +1081,14 @@ export default function DeliveryBoySignup() {
                 onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
               />
               <TouchableOpacity
-                style={styles.signupBtn}
+                style={[styles.signupBtn, isSubmitting && styles.signupBtnDisabled]}
                 onPress={handleSubmit}
+                disabled={isSubmitting}
                 activeOpacity={0.8}
               >
-                <Text style={styles.signupBtnText}>Verify & Register</Text>
+                <Text style={[styles.signupBtnText, isSubmitting && styles.signupBtnTextDisabled]}>
+                  {isSubmitting ? "Submitting..." : "Verify & Register"}
+                </Text>
               </TouchableOpacity>
               <View style={styles.otpActionsContainer}>
                 <TouchableOpacity

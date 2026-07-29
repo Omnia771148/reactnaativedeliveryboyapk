@@ -6,7 +6,8 @@ import { requestNotificationPermission, registerForFCMAsync, saveFCMTokenToBacke
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Animated, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function HomepageScreen() {
@@ -21,6 +22,11 @@ export default function HomepageScreen() {
     totalOrders: 0,
     monthlyEarnings: 0,
   });
+
+  // Custom Alert Modal States
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalTitle, setModalTitle] = useState('Active Order Pending');
+  const [modalMessage, setModalMessage] = useState('');
 
   // Fetch delivery boy completed orders and earnings stats from backend API
   const fetchEarnings = useCallback(async (id) => {
@@ -153,6 +159,30 @@ export default function HomepageScreen() {
     setUpdating(true);
     const targetStatus = !isActive;
 
+    // Check if trying to turn OFF while having an active delivery order
+    if (!targetStatus) {
+      try {
+        const activeRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/${userid}/activeorder`, {}, 5000);
+        if (activeRes.ok) {
+          let activeData = null;
+          try {
+            const text = await activeRes.text();
+            activeData = JSON.parse(text);
+          } catch (_e) {}
+
+          if (activeData && (activeData._id || activeData.orderId)) {
+            setModalTitle("Active Order Pending");
+            setModalMessage("You cannot go offline while you have an active delivery order. Please complete your active order first.");
+            setModalVisible(true);
+            setUpdating(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Active order check error before going offline:", err);
+      }
+    }
+
     if (targetStatus) {
       try {
         await requestNotificationPermission();
@@ -196,7 +226,13 @@ export default function HomepageScreen() {
           router.replace('/orders');
         }
       } else {
-        console.warn('Status update warning:', data.message);
+        if (data.hasActiveOrder || response.status === 400) {
+          setModalTitle("Active Order Pending");
+          setModalMessage(data.message || "You cannot go offline while you have an active delivery order. Please complete your active order first.");
+          setModalVisible(true);
+        } else {
+          console.warn('Status update warning:', data.message);
+        }
       }
     } catch (error) {
       console.error('Error toggling status:', error);
@@ -320,6 +356,31 @@ export default function HomepageScreen() {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* Custom Styled Active Order Alert Modal matching App CSS and Theme */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalIconCircle}>
+              <Ionicons name="close" size={38} color="#FFFFFF" />
+            </View>
+            <Text style={styles.modalTitleText}>{modalTitle}</Text>
+            <Text style={styles.modalMessageText}>{modalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              activeOpacity={0.85}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

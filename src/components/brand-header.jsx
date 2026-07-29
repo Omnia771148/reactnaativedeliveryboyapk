@@ -7,7 +7,7 @@ export function BrandHeader() {
     <View style={styles.headerBar}>
       <View style={styles.headerCircle}>
         <Image
-          source={require('@/assets/images/logo-L.png')}
+          source={require('@/assets/images/logo.png')}
           style={styles.headerLogo}
           contentFit="contain"
         />

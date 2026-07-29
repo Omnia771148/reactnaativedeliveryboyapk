@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Custom User Profile Icon built using standard Views to match color guidelines exactly
@@ -38,9 +38,35 @@ export default function HomeScreen() {
     const checkSession = async () => {
       try {
         const storedId = await AsyncStorage.getItem('userid');
+        const storedSessionId = await AsyncStorage.getItem('sessionId');
         const lastLoginStr = await AsyncStorage.getItem('lastLoginDate');
 
         if (storedId) {
+          if (storedSessionId) {
+            try {
+              const verifyRes = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userid: storedId, sessionId: storedSessionId }),
+              }, 4000);
+
+              if (verifyRes.status === 401) {
+                await AsyncStorage.multiRemove([
+                  'userid',
+                  'sessionId',
+                  'name',
+                  'phone',
+                  'isActive',
+                  'updatedAt',
+                  'lastLoginDate',
+                ]);
+                return;
+              }
+            } catch (vErr) {
+              console.warn('Startup session verify error:', vErr);
+            }
+          }
+
           if (lastLoginStr) {
             const lastLogin = new Date(lastLoginStr);
             const now = new Date();
@@ -51,6 +77,7 @@ export default function HomeScreen() {
               // Expired: Clear everything and show login page
               await AsyncStorage.multiRemove([
                 'userid',
+                'sessionId',
                 'name',
                 'phone',
                 'isActive',
@@ -131,7 +158,9 @@ export default function HomeScreen() {
 
       if (res.ok) {
         const userIdStr = res.data.user._id ? String(res.data.user._id) : '';
+        const sessionIdStr = res.data.sessionId ? String(res.data.sessionId) : '';
         await AsyncStorage.setItem('userid', userIdStr);
+        await AsyncStorage.setItem('sessionId', sessionIdStr);
         await AsyncStorage.setItem('name', res.data.user.name ? String(res.data.user.name) : '');
         await AsyncStorage.setItem('phone', res.data.user.phone ? String(res.data.user.phone) : '');
         await AsyncStorage.setItem('isActive', String(!!res.data.user.isActive));
@@ -193,6 +222,11 @@ export default function HomeScreen() {
             <View style={styles.contentContainer}>
               {/* Header Title: LEEVON */}
               <View style={styles.logoContainer}>
+                <Image
+                  source={require('@/assets/images/company-logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
                 <Text adjustsFontSizeToFit numberOfLines={1} style={styles.logoText}>LEEVON DELIVERY</Text>
               </View>
 
@@ -353,16 +387,39 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 56,
-    paddingVertical: 18,
     borderRadius: 35,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 5,
+      },
+      web: {
+        boxShadow: '0 6px 16px rgba(0, 0, 0, 0.06)',
+        userSelect: 'none',
+      },
+    }),
+  },
+  logoImage: {
+    width: 90,
+    height: 90,
+    marginBottom: 4,
   },
   logoText: {
-    fontSize: 28,
+    fontSize: 20,
     fontWeight: '700',
     letterSpacing: 2,
     color: '#000000',
     textAlign: 'center',
+    marginTop: 6,
   },
   formContainer: {
     width: '100%',

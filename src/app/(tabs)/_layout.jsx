@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text, Modal, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from '@/constants/api';
+import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
@@ -285,6 +285,59 @@ export default function Layout() {
         );
       }
     });
+  }, []);
+
+  // Single-device automatic logout verification effect
+  useEffect(() => {
+    let isMounted = true;
+
+    const checkSession = async () => {
+      try {
+        const storedId = await AsyncStorage.getItem('userid');
+        const storedSessionId = await AsyncStorage.getItem('sessionId');
+
+        if (storedId && storedSessionId) {
+          const res = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userid: storedId, sessionId: storedSessionId }),
+          }, 4000);
+
+          if (res.status === 401) {
+            const data = await res.json().catch(() => ({}));
+            if (data.code === 'SESSION_EXPIRED' || !res.ok) {
+              if (isMounted) {
+                await AsyncStorage.multiRemove([
+                  'userid',
+                  'sessionId',
+                  'name',
+                  'phone',
+                  'isActive',
+                  'updatedAt',
+                  'lastLoginDate',
+                ]);
+                stopDeliveryForegroundService();
+                Alert.alert(
+                  'Account Logged Out',
+                  'Your account was logged in from another device.',
+                  [{ text: 'OK', onPress: () => router.replace('/') }]
+                );
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Session validity check warning:', err);
+      }
+    };
+
+    checkSession();
+    const interval = setInterval(checkSession, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const currentSoundRef = useRef(null);

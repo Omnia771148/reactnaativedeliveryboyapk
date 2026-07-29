@@ -44,9 +44,9 @@ export function LoadingOverlay({ visible }) {
 
         {/* Inner Black Circular Badge */}
         <View style={styles.logoBadge}>
-          {/* Stylized Golden 'L' Logo Image */}
+          {/* Stylized Golden Logo Image */}
           <Image
-            source={require('@/assets/images/logo-L.png')}
+            source={require('@/assets/images/logo.png')}
             style={styles.logoImage}
             contentFit="contain"
           />
