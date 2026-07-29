@@ -7,10 +7,10 @@ import {
   View,
   ScrollView,
   Alert,
-  ActivityIndicator,
   Platform,
   KeyboardAvoidingView,
   Modal,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -55,6 +55,7 @@ export default function ForgotPassword() {
   const [confirmationResult, setConfirmationResult] = useState(null);
   const [error, setError] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [confirmPasswordError, setConfirmPasswordError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
   const [incorrectAttempts, setIncorrectAttempts] = useState(0);
@@ -63,10 +64,12 @@ export default function ForgotPassword() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMessage, setModalMessage] = useState("");
   const [modalType, setModalType] = useState("success"); // 'success' or 'error'
+  const [redirectToLogin, setRedirectToLogin] = useState(false);
 
   const handleModalClose = () => {
     setModalVisible(false);
-    if (modalType === "success") {
+    if (redirectToLogin) {
+      setRedirectToLogin(false);
       router.replace("/");
     }
   };
@@ -127,6 +130,7 @@ export default function ForgotPassword() {
       return;
     }
 
+    Keyboard.dismiss();
     setIsLoading(true);
 
     try {
@@ -196,6 +200,7 @@ export default function ForgotPassword() {
         setConfirmationResult(result);
         setStep(2);
         setResendTimer(30);
+        setRedirectToLogin(false);
         setModalType("success");
         setModalMessage("Verification code has been sent to your phone number.");
         setModalVisible(true);
@@ -232,6 +237,7 @@ export default function ForgotPassword() {
       return;
     }
     setError("");
+    Keyboard.dismiss();
     setIsLoading(true);
 
     try {
@@ -322,6 +328,7 @@ export default function ForgotPassword() {
       return;
     }
 
+    Keyboard.dismiss();
     setIsLoading(true);
 
     try {
@@ -340,6 +347,7 @@ export default function ForgotPassword() {
       }
       const data = await res.json();
       if (res.ok && data.success) {
+        setRedirectToLogin(true);
         setModalType("success");
         setModalMessage("Password Reset Successfully!");
         setModalVisible(true);
@@ -359,15 +367,23 @@ export default function ForgotPassword() {
   const handlePasswordChange = (name, val) => {
     if (name === "newPassword") {
       setNewPassword(val);
-      if (confirmPassword && val !== confirmPassword) {
-        setConfirmPasswordError("Passwords do not match.");
+      if (confirmPassword) {
+        if (confirmPassword.length >= val.length ? confirmPassword !== val : !val.startsWith(confirmPassword)) {
+          setConfirmPasswordError("Passwords do not match.");
+        } else {
+          setConfirmPasswordError("");
+        }
       } else {
         setConfirmPasswordError("");
       }
     } else if (name === "confirmPassword") {
       setConfirmPassword(val);
-      if (newPassword && val !== newPassword) {
-        setConfirmPasswordError("Passwords do not match.");
+      if (val && newPassword) {
+        if (val.length >= newPassword.length ? val !== newPassword : !newPassword.startsWith(val)) {
+          setConfirmPasswordError("Passwords do not match.");
+        } else {
+          setConfirmPasswordError("");
+        }
       } else {
         setConfirmPasswordError("");
       }
@@ -438,7 +454,7 @@ export default function ForgotPassword() {
               {step === 2 && (
                 <View style={styles.stepContainer}>
                   <View style={styles.otpInfoBadge}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#E55B49" />
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#2EBD6B" />
                     <Text style={styles.otpInfoText}>OTP sent to +91 {phone}</Text>
                   </View>
 
@@ -564,7 +580,10 @@ export default function ForgotPassword() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <View style={styles.modalIconCircle}>
+            <View style={[
+              styles.modalIconCircle,
+              modalType === "success" ? styles.modalIconCircleSuccess : styles.modalIconCircleError
+            ]}>
               <Ionicons
                 name={modalType === "success" ? "checkmark" : "close"}
                 size={40}
@@ -818,10 +837,15 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: "#E55B49",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 24,
+  },
+  modalIconCircleError: {
+    backgroundColor: "#E55B49",
+  },
+  modalIconCircleSuccess: {
+    backgroundColor: "#2EBD6B",
   },
   modalMessageText: {
     fontSize: 20,

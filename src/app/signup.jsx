@@ -7,7 +7,7 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Alert,
   Dimensions,
@@ -20,7 +20,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -139,38 +140,6 @@ export default function DeliveryBoySignup() {
     };
   }, [isOtpSent, resendTimer]);
 
-  // Listen for automatic SMS code resolution (auto-verification) on Android devices
-  useEffect(() => {
-    let unsubscribe;
-    if (isOtpSent) {
-      const formattedPhone = "+91" + form.phone.trim();
-      if (Platform.OS !== "web" && !isExpoGo) {
-        try {
-          const nativeAuth = require("@react-native-firebase/auth").default;
-          unsubscribe = nativeAuth().onAuthStateChanged((user) => {
-            if (user && user.phoneNumber === formattedPhone) {
-              console.log("Firebase native auth auto-verified phone for signup:", user.phoneNumber);
-              handleSubmit();
-            }
-          });
-        } catch (err) {
-          console.error("Native auth listener setup failed in signup:", err);
-        }
-      } else {
-        const { onAuthStateChanged } = require("firebase/auth");
-        unsubscribe = onAuthStateChanged(auth, (user) => {
-          if (user && user.phoneNumber === formattedPhone) {
-            console.log("Firebase Web SDK auto-verified phone for signup:", user.phoneNumber);
-            handleSubmit();
-          }
-        });
-      }
-    }
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isOtpSent, form.phone]);
-
   // Clear any stale firebase auth session when entering signup screen
   useEffect(() => {
     const clearSession = async () => {
@@ -248,8 +217,14 @@ export default function DeliveryBoySignup() {
 
     // Real-time mismatch validation for password
     if (name === "confirmPassword" || name === "password") {
-      if (updatedForm.confirmPassword && updatedForm.password !== updatedForm.confirmPassword) {
-        newErrors.confirmPassword = "Passwords do not match.";
+      const p = updatedForm.password || "";
+      const cp = updatedForm.confirmPassword || "";
+      if (cp) {
+        if (cp.length >= p.length ? cp !== p : !p.startsWith(cp)) {
+          newErrors.confirmPassword = "Passwords do not match.";
+        } else {
+          delete newErrors.confirmPassword;
+        }
       } else {
         delete newErrors.confirmPassword;
       }
@@ -257,8 +232,14 @@ export default function DeliveryBoySignup() {
 
     // Real-time mismatch validation for account number
     if (name === "confirmAccountNumber" || name === "accountNumber") {
-      if (updatedForm.confirmAccountNumber && updatedForm.accountNumber !== updatedForm.confirmAccountNumber) {
-        newErrors.confirmAccountNumber = "Account numbers do not match.";
+      const acc = updatedForm.accountNumber || "";
+      const cacc = updatedForm.confirmAccountNumber || "";
+      if (cacc) {
+        if (cacc.length >= acc.length ? cacc !== acc : !acc.startsWith(cacc)) {
+          newErrors.confirmAccountNumber = "Account numbers do not match.";
+        } else {
+          delete newErrors.confirmAccountNumber;
+        }
       } else {
         delete newErrors.confirmAccountNumber;
       }
@@ -361,24 +342,28 @@ export default function DeliveryBoySignup() {
 
     const formattedPhone = "+91" + form.phone;
 
+    Keyboard.dismiss();
     setIsSendingOtp(true);
     try {
-      // Check if phone or email already exists in DB BEFORE sending OTP (4s max timeout to prevent cold-start delays)
+      // Check if phone or email already exists in DB BEFORE sending OTP
       try {
         const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-existing`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: form.phone.trim(), email: form.email ? form.email.trim() : '' }),
-        }, 4000);
-        if (checkRes.ok) {
-          const checkData = await checkRes.json();
-          if (checkData && checkData.exists) {
-            setIsSendingOtp(false);
-            setModalMessage(checkData.message || "This phone number is already registered. Please log in.");
-            setModalType("error");
-            setModalVisible(true);
-            return;
-          }
+          body: JSON.stringify({
+            phone: form.phone.trim(),
+            formattedPhone: "+91" + form.phone.trim(),
+            email: form.email ? form.email.trim().toLowerCase() : ''
+          }),
+        }, 12000);
+
+        const checkData = await checkRes.json().catch(() => null);
+        if (checkData && (checkData.exists || checkData.alreadyExists || checkRes.status === 400 || checkRes.status === 409)) {
+          setIsSendingOtp(false);
+          setModalMessage(checkData.message || "This phone number or email is already registered. Please log in.");
+          setModalType("error");
+          setModalVisible(true);
+          return;
         }
       } catch (checkErr) {
         console.warn("Check existing phone pre-verification warning/timeout:", checkErr);
@@ -469,15 +454,22 @@ export default function DeliveryBoySignup() {
     await sendOtp(true);
   };
 
+  const submittingRef = useRef(false);
+  const hasSubmittedSuccessfullyRef = useRef(false);
+
   const handleSubmit = async () => {
-    if (isSubmitting) return;
+    if (submittingRef.current || hasSubmittedSuccessfullyRef.current) {
+      console.log("Signup submission already in progress or already completed.");
+      return;
+    }
+    submittingRef.current = true;
     const trimmedOtp = otp.trim().replace(/\D/g, "");
 
     setErrorMessage("");
+    Keyboard.dismiss();
     setIsSubmitting(true);
 
     try {
-      const formattedPhone = "+91" + form.phone.trim();
       // 1. Confirm OTP (check if already auto-verified)
       let firebaseUser = null;
       let currentUser = null;
@@ -559,15 +551,34 @@ export default function DeliveryBoySignup() {
 
       const finalFirebaseUid = firebaseUser.uid;
 
-      // 2. Upload documents to Firebase Storage (with graceful fallback so storage errors never block signup)
-      const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
-      const uploadResults = {};
+      // Re-verify that phone or email does not exist in DB before document upload & backend registration
+      try {
+        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-existing`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phone: form.phone.trim(),
+            formattedPhone: "+91" + form.phone.trim(),
+            email: form.email ? form.email.trim().toLowerCase() : ''
+          }),
+        }, 10000);
+        const checkData = await checkRes.json().catch(() => null);
+        if (checkData && (checkData.exists || checkData.alreadyExists || checkRes.status === 400 || checkRes.status === 409)) {
+          setModalMessage(checkData.message || "This phone number or email is already registered. Please log in.");
+          setModalType("error");
+          setModalVisible(true);
+          return;
+        }
+      } catch (checkErr) {
+        console.warn("Pre-submission duplicate check warning:", checkErr);
+      }
 
-      for (const key of fileKeys) {
+      // 2. Upload documents to Firebase Storage in PARALLEL for maximum speed
+      const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
+      const uploadPromises = fileKeys.map(async (key) => {
         const fileObj = selectedFiles[key];
         if (!fileObj || !fileObj.uri) {
-          uploadResults[key] = "";
-          continue;
+          return { key, url: "" };
         }
 
         try {
@@ -580,12 +591,18 @@ export default function DeliveryBoySignup() {
           }
 
           const url = await getDownloadURL(storageRef);
-          uploadResults[key] = url;
+          return { key, url };
         } catch (uploadErr) {
           console.warn(`Firebase Storage upload failed for ${key}:`, uploadErr);
-          uploadResults[key] = fileObj.uri || "";
+          return { key, url: fileObj.uri || "" };
         }
-      }
+      });
+
+      const uploadedFiles = await Promise.all(uploadPromises);
+      const uploadResults = {};
+      uploadedFiles.forEach(({ key, url }) => {
+        uploadResults[key] = url;
+      });
 
       // 3. Register user with Express backend
       const finalFormData = {
@@ -600,37 +617,78 @@ export default function DeliveryBoySignup() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalFormData),
-      }, 15000);
+      }, 30000);
 
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         setModalMessage("Server is temporarily unavailable. Please try again in a moment.");
         setModalType("error");
         setModalVisible(true);
-        setIsSubmitting(false);
         return;
       }
       const data = await res.json();
       if (res.ok) {
+        hasSubmittedSuccessfullyRef.current = true;
         setModalMessage("Signup Request Submitted Successfully!\n\nYour account will be activated within 24 hours after our team review.");
         setModalType("success");
         setSuccessRedirect(true);
         setModalVisible(true);
       } else {
+        if (hasSubmittedSuccessfullyRef.current) {
+          console.log("Signup already succeeded, ignoring subsequent failure message.");
+          return;
+        }
         setModalMessage(data.message || "Signup failed");
         setModalType("error");
         setModalVisible(true);
-        setIsSubmitting(false);
       }
     } catch (error) {
+      if (hasSubmittedSuccessfullyRef.current) {
+        console.log("Signup already succeeded, ignoring catch error.");
+        return;
+      }
       console.error("Verification/Signup error:", error);
       let msg = "Signup Failed: " + (error.message || "Unknown error");
       setModalMessage(msg);
       setModalType("error");
       setModalVisible(true);
+    } finally {
       setIsSubmitting(false);
+      submittingRef.current = false;
     }
   };
+
+  // Listen for automatic SMS code resolution (auto-verification) on Android devices
+  useEffect(() => {
+    let unsubscribe;
+    if (isOtpSent) {
+      const formattedPhone = "+91" + form.phone.trim();
+      if (Platform.OS !== "web" && !isExpoGo) {
+        try {
+          const nativeAuth = require("@react-native-firebase/auth").default;
+          unsubscribe = nativeAuth().onAuthStateChanged((user) => {
+            if (user && user.phoneNumber === formattedPhone) {
+              console.log("Firebase native auth auto-verified phone for signup:", user.phoneNumber);
+              handleSubmit();
+            }
+          });
+        } catch (err) {
+          console.error("Native auth listener setup failed in signup:", err);
+        }
+      } else {
+        const { onAuthStateChanged } = require("firebase/auth");
+        unsubscribe = onAuthStateChanged(auth, (user) => {
+          if (user && user.phoneNumber === formattedPhone) {
+            console.log("Firebase Web SDK auto-verified phone for signup:", user.phoneNumber);
+            handleSubmit();
+          }
+        });
+      }
+    }
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [isOtpSent, form.phone, handleSubmit]);
 
   return (
     <View style={styles.container}>
@@ -1081,12 +1139,12 @@ export default function DeliveryBoySignup() {
                 onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
               />
               <TouchableOpacity
-                style={[styles.signupBtn, isSubmitting && styles.signupBtnDisabled]}
+                style={[styles.verifyOtpBtn, isSubmitting && styles.signupBtnDisabled]}
                 onPress={handleSubmit}
                 disabled={isSubmitting}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.signupBtnText, isSubmitting && styles.signupBtnTextDisabled]}>
+                <Text style={styles.verifyOtpBtnText}>
                   {isSubmitting ? "Submitting..." : "Verify & Register"}
                 </Text>
               </TouchableOpacity>
@@ -1362,6 +1420,20 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 340,
     alignItems: "center",
+  },
+  verifyOtpBtn: {
+    backgroundColor: "#000000",
+    width: "100%",
+    height: 54,
+    borderRadius: 35,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
+  },
+  verifyOtpBtnText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "bold",
   },
   otpTitle: {
     fontSize: 22,

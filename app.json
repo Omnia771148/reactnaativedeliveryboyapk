@@ -4,7 +4,7 @@
     "slug": "deliveryboyapp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "deliveryboyapp",
     "userInterfaceStyle": "automatic",
     "ios": {
@@ -14,8 +14,8 @@
       "package": "com.leevon.deliveryboy",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#000000",
-        "foregroundImage": "./assets/images/icon.png"
+        "backgroundColor": "#0D0E12",
+        "foregroundImage": "./assets/images/app-icon.png"
       },
       "permissions": [
         "android.permission.INTERNET",
@@ -38,9 +38,10 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0D0E12",
+          "resizeMode": "contain",
           "android": {
-            "image": "./assets/images/splash-icon.png",
-            "imageWidth": 76
+            "image": "./assets/images/app-icon.png",
+            "imageWidth": 140
           }
         }
       ],
