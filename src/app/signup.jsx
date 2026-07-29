@@ -546,17 +546,17 @@ export default function DeliveryBoySignup() {
             return;
           }
         }
-      } else if (currentUser) {
-        firebaseUser = currentUser;
-      } else if (!trimmedOtp) {
-        setModalMessage("Please enter the OTP received.");
+      }
+
+      if (!firebaseUser || !firebaseUser.uid) {
+        setModalMessage("OTP verification failed. Please enter the correct OTP code or tap 'Resend OTP'.");
         setModalType("error");
         setModalVisible(true);
         setIsSubmitting(false);
         return;
       }
 
-      const finalFirebaseUid = (firebaseUser && firebaseUser.uid) ? firebaseUser.uid : ("delboy-uid-" + Date.now());
+      const finalFirebaseUid = firebaseUser.uid;
 
       // 2. Upload documents to Firebase Storage (with graceful fallback so storage errors never block signup)
       const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
