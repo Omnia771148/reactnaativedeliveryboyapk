@@ -8,6 +8,7 @@ export default function SettingsLayout() {
       <Stack.Screen name="contact" />
       <Stack.Screen name="orders" />
       <Stack.Screen name="reviews" />
+      <Stack.Screen name="pending-payments" />
     </Stack>
   );
 }

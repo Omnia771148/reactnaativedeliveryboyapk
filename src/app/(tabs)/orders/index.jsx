@@ -61,6 +61,7 @@ export default function OrdersScreen() {
   const ordersRef = useRef([]);
   const isFirstFetch = useRef(true);
 
+  const currentSoundRef = useRef(null);
   const soundTimeoutRef = useRef(null);
   const isPlayingLoopRef = useRef(false);
 
@@ -69,6 +70,15 @@ export default function OrdersScreen() {
     if (soundTimeoutRef.current) {
       clearTimeout(soundTimeoutRef.current);
       soundTimeoutRef.current = null;
+    }
+    if (currentSoundRef.current) {
+      try {
+        await currentSoundRef.current.stopAsync();
+        await currentSoundRef.current.unloadAsync();
+      } catch (e) {
+        // Ignore if sound already stopped or unloaded
+      }
+      currentSoundRef.current = null;
     }
   };
 
@@ -87,9 +97,14 @@ export default function OrdersScreen() {
           require('@/assets/ordernotification.wav'),
           { shouldPlay: true, isLooping: false }
         );
+        currentSoundRef.current = sound;
+
         sound.setOnPlaybackStatusUpdate((status) => {
           if (status.didJustFinish) {
             sound.unloadAsync().catch(() => {});
+            if (currentSoundRef.current === sound) {
+              currentSoundRef.current = null;
+            }
             if (isPlayingLoopRef.current) {
               soundTimeoutRef.current = setTimeout(() => {
                 if (isPlayingLoopRef.current) {
@@ -199,13 +214,17 @@ export default function OrdersScreen() {
           activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
         }
 
-        // Compare fetched orders with previously stored orders
-        const prevOrderIds = ordersRef.current.map(o => o._id || o.orderId);
-        const currentOrderIds = activeOrders.map(o => o._id || o.orderId);
-        const hasNewOrder = currentOrderIds.some(id => !prevOrderIds.includes(id));
+        if (activeOrders.length === 0) {
+          stopOrderSound();
+        } else if (!isFirstFetch.current) {
+          // Compare fetched orders with previously stored orders (only play sound for NEW orders after first load)
+          const prevOrderIds = ordersRef.current.map(o => o._id || o.orderId);
+          const currentOrderIds = activeOrders.map(o => o._id || o.orderId);
+          const hasNewOrder = currentOrderIds.some(id => !prevOrderIds.includes(id));
 
-        if (hasNewOrder) {
-          playSound();
+          if (hasNewOrder) {
+            playSound();
+          }
         }
 
         ordersRef.current = activeOrders;
@@ -257,18 +276,32 @@ export default function OrdersScreen() {
       fetchOrders();
     }, 5000);
 
+    const sub = DeviceEventEmitter.addListener('stopOrderSound', () => {
+      stopOrderSound();
+    });
+
     return () => {
       clearInterval(intervalId);
+      sub.remove();
+      stopOrderSound();
     };
   }, []);
 
   useEffect(() => {
     // Instantly refresh active/inactive status and orders whenever the tab comes into focus
-    const unsubscribe = navigation.addListener('focus', () => {
+    const unsubscribeFocus = navigation.addListener('focus', () => {
       fetchOrders();
     });
 
-    return unsubscribe;
+    // Stop audio immediately whenever screen loses focus
+    const unsubscribeBlur = navigation.addListener('blur', () => {
+      stopOrderSound();
+    });
+
+    return () => {
+      unsubscribeFocus();
+      unsubscribeBlur();
+    };
   }, [navigation]);
 
   const handleRefresh = () => {
@@ -437,6 +470,7 @@ export default function OrdersScreen() {
       }
 
       if (response.ok) {
+        await stopOrderSound();
         DeviceEventEmitter.emit('stopOrderSound');
         fetchOrders();
         router.replace('/liveorders');
@@ -499,6 +533,7 @@ export default function OrdersScreen() {
       });
 
       if (response.ok) {
+        await stopOrderSound();
         DeviceEventEmitter.emit('stopOrderSound');
         fetchOrders(); // Refresh to remove the rejected order from view
       } else {

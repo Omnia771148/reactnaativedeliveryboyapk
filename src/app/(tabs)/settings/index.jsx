@@ -186,6 +186,19 @@ export default function SettingsScreen() {
             <Ionicons name="play" size={12} color="#000000" />
           </TouchableOpacity>
 
+          {/* Pending Payments */}
+          <TouchableOpacity 
+            style={styles.menuButton} 
+            activeOpacity={0.8}
+            onPress={() => router.push('/settings/pending-payments')}
+          >
+            <View style={styles.menuButtonLeft}>
+              <Ionicons name="card" size={20} color="#000000" />
+              <Text style={styles.menuButtonText}>Pending Payments</Text>
+            </View>
+            <Ionicons name="play" size={12} color="#000000" />
+          </TouchableOpacity>
+
           {/* Contact Us */}
           <TouchableOpacity 
             style={styles.menuButton} 

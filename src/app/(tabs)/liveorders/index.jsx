@@ -22,8 +22,85 @@ export default function LiveOrdersScreen() {
 
   // Custom alert modal states
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalType, setModalType] = useState('success'); 
+  const [modalType, setModalType] = useState('success');
   const [modalMessage, setModalMessage] = useState('');
+
+  // Preparation time & live countdown timer state
+  const [remainingTimeText, setRemainingTimeText] = useState('');
+  const [isTimerOverdue, setIsTimerOverdue] = useState(false);
+
+  const getPrepTimeVal = useCallback((order) => {
+    if (!order) return null;
+    const raw =
+      order.preparationTime ??
+      order.prepTime ??
+      order.preparation_time ??
+      order.prep_time ??
+      order.cookingTime ??
+      order.estimatedPreparationTime ??
+      order.prepMinutes ??
+      order.timeToPrepare ??
+      order.estimatedTime;
+
+    if (raw === undefined || raw === null || raw === '') return null;
+    return raw;
+  }, []);
+
+  useEffect(() => {
+    if (!activeOrder) {
+      setRemainingTimeText('');
+      setIsTimerOverdue(false);
+      return;
+    }
+
+    const rawPrep = getPrepTimeVal(activeOrder);
+    if (!rawPrep) {
+      setRemainingTimeText('');
+      setIsTimerOverdue(false);
+      return;
+    }
+
+    let prepMinutes = null;
+    if (typeof rawPrep === 'number' && !isNaN(rawPrep)) {
+      prepMinutes = rawPrep;
+    } else if (typeof rawPrep === 'string') {
+      const match = rawPrep.match(/\d+/);
+      if (match) {
+        prepMinutes = parseInt(match[0], 10);
+      }
+    }
+
+    const startStr = activeOrder.acceptedAt || activeOrder.orderDate || activeOrder.createdAt || activeOrder.updatedAt;
+    const startTime = startStr ? new Date(startStr).getTime() : null;
+
+    const updateCountdown = () => {
+      if (!prepMinutes || isNaN(prepMinutes)) {
+        setRemainingTimeText(String(rawPrep));
+        setIsTimerOverdue(false);
+        return;
+      }
+
+      const now = Date.now();
+      const baseTime = startTime && !isNaN(startTime) ? startTime : now;
+      const targetTime = baseTime + prepMinutes * 60 * 1000;
+      const diffMs = targetTime - now;
+
+      if (diffMs > 0) {
+        const totalSec = Math.floor(diffMs / 1000);
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        setRemainingTimeText(`${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+        setIsTimerOverdue(false);
+      } else {
+        setRemainingTimeText('00:00');
+        setIsTimerOverdue(true);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [activeOrder, getPrepTimeVal]);
 
   const fetchActiveOrder = useCallback(async (userIdToUse) => {
     const id = userIdToUse || userid;
@@ -218,7 +295,7 @@ export default function LiveOrdersScreen() {
         const parsed = JSON.parse(activeOrder.userCoordinates);
         lat = parsed.lat;
         lng = parsed.lng;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Fallbacks for location object or root lat/lng
@@ -284,13 +361,13 @@ export default function LiveOrdersScreen() {
     // Alphanumeric filters for OTP inputs
     const cleanText = text.replace(/[^a-zA-Z0-9]/g, '');
     const newOtp = [...otp];
-    
+
     if (cleanText === '') {
       newOtp[index] = '';
       setOtp(newOtp);
       return;
     }
-    
+
     newOtp[index] = cleanText.slice(-1); // Only store the last character typed
     setOtp(newOtp);
 
@@ -524,6 +601,22 @@ export default function LiveOrdersScreen() {
                   </TouchableOpacity>
                 </View>
 
+                {/* PREPARATION TIME BLOCK */}
+                <View style={styles.block}>
+                  <Text style={styles.blockLabel}>PREPARATION TIME</Text>
+                  <View style={styles.timerRow}>
+                    <Ionicons name="time-outline" size={24} color={isTimerOverdue ? "#CE3A31" : "#D97706"} />
+                    <Text style={[styles.timerValueText, isTimerOverdue && styles.timerOverdueText]}>
+                      {remainingTimeText || (getPrepTimeVal(activeOrder) ? `${getPrepTimeVal(activeOrder)} mins` : 'N/A')}
+                    </Text>
+                  </View>
+                  {getPrepTimeVal(activeOrder) ? (
+                    <Text style={styles.prepSubtext}>
+                      {isTimerOverdue ? 'Order ready / time completed' : `Estimated Prep: ${getPrepTimeVal(activeOrder)} mins`}
+                    </Text>
+                  ) : null}
+                </View>
+
                 {/* DELIVERY FEE BLOCK */}
                 <View style={styles.block}>
                   <Text style={styles.blockLabel}>DELIVERY FEE</Text>
@@ -711,6 +804,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginVertical: 4,
+  },
+  timerValueText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#D97706',
+    letterSpacing: 1.5,
+  },
+  timerOverdueText: {
+    color: '#CE3A31',
+  },
+  prepSubtext: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8882',
+    marginTop: 2,
+    textAlign: 'center',
   },
   feeText: {
     fontSize: 26,
