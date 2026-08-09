@@ -38,3 +38,8 @@
 -keep class com.google.firebase.** { *; }
 -keep class io.invertase.firebase.** { *; }
 -dontwarn io.invertase.firebase.**
+
+# App Native Modules & Foreground Service
+-keep class com.leevon.deliveryboy.** { *; }
+-keepclassmembers class com.leevon.deliveryboy.** { *; }
+-keepclassmembernames class com.leevon.deliveryboy.** { *; }

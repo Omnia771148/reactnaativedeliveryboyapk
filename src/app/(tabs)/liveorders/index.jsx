@@ -25,6 +25,9 @@ export default function LiveOrdersScreen() {
   const [modalType, setModalType] = useState('success');
   const [modalMessage, setModalMessage] = useState('');
 
+  // Pickup confirmation modal state
+  const [pickupModalVisible, setPickupModalVisible] = useState(false);
+
   // Preparation time & live countdown timer state
   const [remainingTimeText, setRemainingTimeText] = useState('');
   const [isTimerOverdue, setIsTimerOverdue] = useState(false);
@@ -320,7 +323,7 @@ export default function LiveOrdersScreen() {
     openUrlInBrowserOrApp(googleMapsUrl);
   };
 
-  const handlePickupOrder = async () => {
+  const processPickupOrder = async () => {
     if (!activeOrder || updating) return;
 
     setUpdating(true);
@@ -355,6 +358,16 @@ export default function LiveOrdersScreen() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handlePickupOrder = () => {
+    if (!activeOrder || updating) return;
+    setPickupModalVisible(true);
+  };
+
+  const confirmPickupOrder = () => {
+    setPickupModalVisible(false);
+    processPickupOrder();
   };
 
   const handleOtpChange = (text, index) => {
@@ -677,6 +690,63 @@ export default function LiveOrdersScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      {/* PICKUP CONFIRMATION CUSTOM MODAL */}
+      <Modal
+        visible={pickupModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPickupModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPickupModalVisible(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={styles.pickupModalContainer}
+            onPress={(e) => e.stopPropagation?.()}
+          >
+            <View style={styles.pickupModalIconCircle}>
+              <Ionicons name="restaurant" size={32} color="#FFFFFF" />
+            </View>
+            <Text style={styles.pickupModalTitleText}>
+              Are you at the restaurant?
+            </Text>
+            <Text style={styles.pickupModalMessageText}>
+              Please confirm that you are at the restaurant to pick up this order.
+            </Text>
+
+            {(activeOrder?.restaurantName || activeOrder?.vendorName || activeOrder?.restaurant_name) && (
+              <View style={styles.pickupModalBadge}>
+                <Ionicons name="location-sharp" size={16} color="#2E7D32" />
+                <Text style={styles.pickupModalBadgeText} numberOfLines={1}>
+                  {activeOrder?.restaurantName || activeOrder?.vendorName || activeOrder?.restaurant_name}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.pickupModalButtonRow}>
+              <TouchableOpacity
+                style={styles.pickupModalCancelButton}
+                activeOpacity={0.8}
+                onPress={() => setPickupModalVisible(false)}
+              >
+                <Text style={styles.pickupModalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.pickupModalConfirmButton}
+                activeOpacity={0.8}
+                onPress={confirmPickupOrder}
+              >
+                <Text style={styles.pickupModalConfirmButtonText}>Yes, Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* CUSTOM POPUP MODAL (Success/Error states) */}
       <Modal
@@ -1121,6 +1191,104 @@ const styles = StyleSheet.create({
   modalButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Pickup modal custom styles
+  pickupModalContainer: {
+    width: '88%',
+    maxWidth: 340,
+    backgroundColor: '#FAF9F6',
+    borderRadius: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  pickupModalIconCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#2E7D32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    shadowColor: '#2E7D32',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  pickupModalTitleText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2A3037',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  pickupModalMessageText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#8E8882',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 16,
+    paddingHorizontal: 6,
+  },
+  pickupModalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 6,
+    maxWidth: '90%',
+  },
+  pickupModalBadgeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#2E7D32',
+  },
+  pickupModalButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  pickupModalCancelButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#EAE5D9',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickupModalCancelButtonText: {
+    color: '#2A3037',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  pickupModalConfirmButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#2E7D32',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#2E7D32',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  pickupModalConfirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

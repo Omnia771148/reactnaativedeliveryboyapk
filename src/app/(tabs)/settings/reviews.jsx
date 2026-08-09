@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
@@ -29,7 +29,7 @@ export default function MyReviewsScreen() {
         } catch (_e) {
           console.error('Failed to parse reviews JSON');
         }
-        setReviews(data);
+        setReviews(Array.isArray(data) ? data : []);
       } else {
         console.error('Failed to fetch reviews:', response.status);
       }
@@ -55,18 +55,18 @@ export default function MyReviewsScreen() {
     try {
       const date = new Date(dateStr);
       if (isNaN(date.getTime())) return 'N/A';
-      
+
       const day = String(date.getDate()).padStart(2, '0');
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const month = months[date.getMonth()];
       const year = date.getFullYear();
-      
+
       let hours = date.getHours();
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const ampm = hours >= 12 ? 'PM' : 'AM';
       hours = hours % 12;
-      hours = hours ? hours : 12; // convert hour '0' to '12'
-      
+      hours = hours ? hours : 12;
+
       return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
     } catch (_error) {
       return 'N/A';
@@ -76,15 +76,15 @@ export default function MyReviewsScreen() {
   const renderStars = (rating) => {
     const stars = [];
     const maxStars = 5;
-    const activeRating = rating || 0;
+    const activeRating = Math.max(0, Math.min(5, Math.round(rating || 0)));
 
     for (let i = 1; i <= maxStars; i++) {
       stars.push(
-        <Ionicons 
-          key={i} 
-          name={i <= activeRating ? "star" : "star-outline"} 
-          size={16} 
-          color="#B58A55" // Golden thematic color
+        <Ionicons
+          key={i}
+          name={i <= activeRating ? 'star' : 'star-outline'}
+          size={16}
+          color="#B58A55"
           style={{ marginRight: 2 }}
         />
       );
@@ -92,9 +92,26 @@ export default function MyReviewsScreen() {
     return <View style={styles.starRow}>{stars}</View>;
   };
 
+  const calculateAverageRating = () => {
+    if (!reviews || reviews.length === 0) return '0.0';
+    let total = 0;
+    let count = 0;
+    reviews.forEach(item => {
+      const r = Number(item.deliveryBoyRating || 0);
+      if (r > 0) {
+        total += r;
+        count++;
+      }
+    });
+    return count > 0 ? (total / count).toFixed(1) : '0.0';
+  };
+
   const renderReviewItem = ({ item }) => {
-    const reviewText = item.deliveryBoyReview ? item.deliveryBoyReview.trim() : '';
+    const rating = Number(item.deliveryBoyRating || 0);
+    const reviewText = item.deliveryBoyReview ? String(item.deliveryBoyReview).trim() : '';
     const hasReviewText = reviewText.length > 0;
+    const orderId = item.orderId || 'ORD-N/A';
+    const dateStr = item.createdAt;
 
     return (
       <View style={styles.reviewCard}>
@@ -102,9 +119,9 @@ export default function MyReviewsScreen() {
         <View style={styles.cardHeader}>
           <View style={styles.orderIdContainer}>
             <Ionicons name="receipt-outline" size={16} color="#2A3037" />
-            <Text style={styles.orderIdText}>{item.orderId || 'ORD-UNKNOWN'}</Text>
+            <Text style={styles.orderIdText}>{orderId}</Text>
           </View>
-          {renderStars(item.deliveryBoyRating)}
+          {renderStars(rating)}
         </View>
 
         {/* Divider */}
@@ -119,8 +136,8 @@ export default function MyReviewsScreen() {
 
         {/* Card Footer: Date and Time */}
         <View style={styles.cardFooter}>
-          <Ionicons name="calendar-outline" size={13} color="#8E8882" />
-          <Text style={styles.dateText}>{formatReviewDate(item.createdAt)}</Text>
+          <Ionicons name="calendar-outline" size={13} color="#5A5550" />
+          <Text style={styles.dateText}>{formatReviewDate(dateStr)}</Text>
         </View>
       </View>
     );
@@ -136,24 +153,42 @@ export default function MyReviewsScreen() {
     );
   };
 
+  const avgRating = calculateAverageRating();
+
   const renderHeader = () => {
     return (
-      <View style={styles.headerBar}>
-        <TouchableOpacity 
-          style={styles.backButton} 
-          activeOpacity={0.8}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="arrow-back" size={20} color="#000000" />
-        </TouchableOpacity>
+      <View style={styles.headerContainer}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            activeOpacity={0.8}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={20} color="#000000" />
+          </TouchableOpacity>
 
-        <View style={styles.headerTitleBadge}>
-          <Ionicons name="star" size={18} color="#2A3037" />
-          <Text style={styles.headerTitleText}>My Reviews</Text>
+          <View style={styles.headerTitleBadge}>
+            <Ionicons name="star" size={18} color="#2A3037" />
+            <Text style={styles.headerTitleText}>My Reviews</Text>
+          </View>
+
+          <View style={styles.headerSpacer} />
         </View>
-        
-        {/* Spacer to align title center */}
-        <View style={styles.headerSpacer} />
+
+        {reviews.length > 0 && (
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryLeft}>
+              <Text style={styles.averageScoreText}>{avgRating}</Text>
+              <View style={styles.summaryStarsRow}>
+                {renderStars(Math.round(Number(avgRating)))}
+              </View>
+            </View>
+            <View style={styles.summaryRight}>
+              <Text style={styles.totalReviewsCount}>{reviews.length}</Text>
+              <Text style={styles.totalReviewsLabel}>Customer Reviews</Text>
+            </View>
+          </View>
+        )}
       </View>
     );
   };
@@ -168,7 +203,7 @@ export default function MyReviewsScreen() {
         <FlatList
           data={reviews}
           renderItem={renderReviewItem}
-          keyExtractor={(item) => item._id}
+          keyExtractor={(item, index) => item._id || item.id || `review-${index}`}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
@@ -190,10 +225,13 @@ export default function MyReviewsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAF9F6', // Off-white cream page background
+    backgroundColor: '#FAF9F6',
   },
   safeArea: {
     flex: 1,
+  },
+  headerContainer: {
+    marginBottom: 16,
   },
   headerBar: {
     flexDirection: 'row',
@@ -201,7 +239,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 4,
     marginTop: 20,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   backButton: {
     width: 44,
@@ -237,23 +275,51 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   headerSpacer: {
-    width: 44, // Align center helper spacer matching backButton width
+    width: 44,
   },
-  loaderContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  loadingSpinnerWrapper: {
-    flex: 1,
-    justifyContent: 'center',
+  summaryCard: {
+    backgroundColor: '#EAE5D9',
+    borderRadius: 20,
+    padding: 18,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#DCD5C7',
+    marginBottom: 8,
+  },
+  summaryLeft: {
+    alignItems: 'flex-start',
+  },
+  averageScoreText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#2A3037',
+    lineHeight: 36,
+  },
+  summaryStarsRow: {
+    marginTop: 4,
+  },
+  summaryRight: {
+    alignItems: 'flex-end',
+  },
+  totalReviewsCount: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#B58A55',
+  },
+  totalReviewsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#5A5550',
+    marginTop: 2,
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingBottom: 100, // Safe padding above bottom tab bar
+    paddingBottom: 100,
   },
   reviewCard: {
-    backgroundColor: '#DCD5C7', // Matches the sand/beige color of the navbar
+    backgroundColor: '#DCD5C7',
     borderRadius: 24,
     padding: 16,
     marginBottom: 14,
@@ -298,7 +364,7 @@ const styles = StyleSheet.create({
   noReviewText: {
     fontSize: 14,
     fontStyle: 'italic',
-    color: '#5A5550', // Darker gray for legibility on #DCD5C7
+    color: '#5A5550',
     lineHeight: 20,
   },
   cardFooter: {
@@ -308,14 +374,14 @@ const styles = StyleSheet.create({
   },
   dateText: {
     fontSize: 12,
-    color: '#5A5550', // Darker gray for legibility on #DCD5C7
+    color: '#5A5550',
     fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 100,
+    marginTop: 80,
     paddingHorizontal: 40,
     gap: 12,
   },

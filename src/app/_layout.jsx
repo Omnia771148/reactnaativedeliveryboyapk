@@ -4,6 +4,8 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 import { useEffect, useState } from 'react';
 
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
 export default function RootLayout() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
@@ -27,9 +29,11 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider style={styles.container}>
-      <Slot />
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider style={styles.container}>
+        <Slot />
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

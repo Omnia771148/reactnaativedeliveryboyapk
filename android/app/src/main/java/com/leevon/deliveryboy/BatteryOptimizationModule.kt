@@ -79,7 +79,31 @@ class BatteryOptimizationModule(reactContext: ReactApplicationContext) : ReactCo
                         }
                         reactApplicationContext.startActivity(intent)
                         intentOpened = true
-                    } catch (ex: Exception) {}
+                    } catch (ex: Exception) {
+                        try {
+                            val intent = Intent().apply {
+                                component = ComponentName(
+                                    "com.iqoo.secure",
+                                    "com.iqoo.secure.ui.phoneoptimize.BgStartUpManagerActivity"
+                                )
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            reactApplicationContext.startActivity(intent)
+                            intentOpened = true
+                        } catch (e3: Exception) {
+                            try {
+                                val intent = Intent().apply {
+                                    component = ComponentName(
+                                        "com.vivo.permissionmanager",
+                                        "com.vivo.permissionmanager.activity.PurviewTabActivity"
+                                    )
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                reactApplicationContext.startActivity(intent)
+                                intentOpened = true
+                            } catch (e4: Exception) {}
+                        }
+                    }
                 }
             } else if (manufacturer.contains("xiaomi") || manufacturer.contains("redmi")) {
                 try {

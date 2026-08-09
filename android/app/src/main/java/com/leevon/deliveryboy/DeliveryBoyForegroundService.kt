@@ -90,21 +90,20 @@ class DeliveryBoyForegroundService : Service() {
                 flags = flags or Notification.FLAG_ONGOING_EVENT or Notification.FLAG_NO_CLEAR or Notification.FLAG_FOREGROUND_SERVICE
             }
 
-            var started = false
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // Android 14+ (API level 34+)
                 try {
                     startForeground(
                         NOTIFICATION_ID,
                         notification,
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
                     )
-                    started = true
                 } catch (e: Exception) {
                     e.printStackTrace()
+                    try {
+                        stopSelf()
+                    } catch (_: Exception) {}
                 }
-            }
-
-            if (!started) {
+            } else {
                 try {
                     startForeground(NOTIFICATION_ID, notification)
                 } catch (e: Exception) {
