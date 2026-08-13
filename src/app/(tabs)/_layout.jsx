@@ -316,11 +316,12 @@ export default function Layout() {
                 'lastLoginDate',
               ]);
               stopDeliveryForegroundService();
-              const alertTitle = (res.status === 403 || data.code === 'ACCOUNT_BLOCKED') ? 'Account Blocked' : 'Account Logged Out';
-              const alertMsg = (res.status === 403 || data.code === 'ACCOUNT_BLOCKED') 
+              const isActuallyBlocked = data.isBlocked === true || data.code === 'ACCOUNT_BLOCKED';
+              const alertTitle = isActuallyBlocked ? 'Account Blocked' : 'Session Expired';
+              const alertMsg = isActuallyBlocked
                 ? 'Your account has been blocked by administration. You have been automatically logged out.'
                 : 'Your session has expired or was logged in from another device.';
-              
+
               Alert.alert(
                 alertTitle,
                 alertMsg,

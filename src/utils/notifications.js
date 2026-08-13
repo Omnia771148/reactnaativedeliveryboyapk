@@ -26,37 +26,36 @@ function getMessaging() {
 export async function requestNotificationPermission() {
   if (Platform.OS === 'web') return false;
 
-  const messagingModule = getMessaging();
-  if (!messagingModule) {
-    console.log('Skipping notification permission - Firebase Messaging not available in Expo Go');
-    return false;
-  }
-
   try {
-    // 1. Request Android 13+ Notification Permission if applicable
-    if (Platform.OS === 'android' && Platform.Version >= 33) {
-      const hasPermission = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-      );
-      if (!hasPermission) {
-        const status = await PermissionsAndroid.request(
+    // 1. Android Permission Request
+    if (Platform.OS === 'android') {
+      if (Platform.Version >= 33) {
+        const hasPermission = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         );
-        if (status !== PermissionsAndroid.RESULTS.GRANTED) {
-          console.warn('POST_NOTIFICATIONS permission denied on Android 13+');
+        if (!hasPermission) {
+          const status = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+          );
+          return status === PermissionsAndroid.RESULTS.GRANTED;
         }
       }
+      return true;
     }
 
-    // 2. Request FCM Permission
-    const authStatus = await messagingModule().requestPermission();
-    const enabled =
-      authStatus === messagingModule.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messagingModule.AuthorizationStatus.PROVISIONAL;
-    return enabled;
+    // 2. iOS FCM Permission Request
+    const messagingModule = getMessaging();
+    if (messagingModule && Platform.OS === 'ios') {
+      const authStatus = await messagingModule().requestPermission();
+      return (
+        authStatus === messagingModule.AuthorizationStatus.AUTHORIZED ||
+        authStatus === messagingModule.AuthorizationStatus.PROVISIONAL
+      );
+    }
+    return true;
   } catch (error) {
-    console.error('Error requesting notification permission:', error);
-    return true; // Fallback return true so token fetch is attempted on Android
+    console.warn('Error requesting notification permission (caught safely):', error);
+    return true;
   }
 }
 

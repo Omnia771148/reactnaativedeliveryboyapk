@@ -50,6 +50,7 @@ export default function HomeScreen() {
             }, 4000);
 
             if (verifyRes.status === 401 || verifyRes.status === 403) {
+              const verifyData = await verifyRes.json().catch(() => ({}));
               await AsyncStorage.multiRemove([
                 'userid',
                 'sessionId',
@@ -59,7 +60,7 @@ export default function HomeScreen() {
                 'updatedAt',
                 'lastLoginDate',
               ]);
-              if (verifyRes.status === 403) {
+              if (verifyData.isBlocked === true || verifyData.code === 'ACCOUNT_BLOCKED') {
                 setModalType('error');
                 setModalMessage('Your account has been blocked by administration. Please contact support.');
                 setModalVisible(true);
