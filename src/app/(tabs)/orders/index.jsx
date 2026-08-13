@@ -56,6 +56,8 @@ export default function OrdersScreen() {
   const [errorModalMessage, setErrorModalMessage] = useState('');
   const [updating, setUpdating] = useState(false);
   const [hasActiveOrder, setHasActiveOrder] = useState(false);
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [selectedOrderToReject, setSelectedOrderToReject] = useState(null);
 
   const bounceAnim = useRef(new Animated.Value(0)).current;
   const ordersRef = useRef([]);
@@ -216,14 +218,11 @@ export default function OrdersScreen() {
 
         if (activeOrders.length === 0) {
           stopOrderSound();
-        } else if (!isFirstFetch.current) {
-          // Compare fetched orders with previously stored orders (only play sound for NEW orders after first load)
-          const prevOrderIds = ordersRef.current.map(o => o._id || o.orderId);
-          const currentOrderIds = activeOrders.map(o => o._id || o.orderId);
-          const hasNewOrder = currentOrderIds.some(id => !prevOrderIds.includes(id));
-
-          if (hasNewOrder) {
+          DeviceEventEmitter.emit('stopOrderSound');
+        } else if (userIsActive && !hasActive) {
+          if (!isPlayingLoopRef.current) {
             playSound();
+            DeviceEventEmitter.emit('startOrderSound');
           }
         }
 
@@ -280,10 +279,14 @@ export default function OrdersScreen() {
       stopOrderSound();
     });
 
+    const refreshSub = DeviceEventEmitter.addListener('refreshOrdersCount', () => {
+      fetchOrders();
+    });
+
     return () => {
       clearInterval(intervalId);
       sub.remove();
-      stopOrderSound();
+      refreshSub.remove();
     };
   }, []);
 
@@ -293,14 +296,8 @@ export default function OrdersScreen() {
       fetchOrders();
     });
 
-    // Stop audio immediately whenever screen loses focus
-    const unsubscribeBlur = navigation.addListener('blur', () => {
-      stopOrderSound();
-    });
-
     return () => {
       unsubscribeFocus();
-      unsubscribeBlur();
     };
   }, [navigation]);
 
@@ -513,6 +510,24 @@ export default function OrdersScreen() {
     }
   };
 
+  const promptRejectOrder = (order) => {
+    setSelectedOrderToReject(order);
+    setRejectModalVisible(true);
+  };
+
+  const cancelRejectOrder = () => {
+    setRejectModalVisible(false);
+    setSelectedOrderToReject(null);
+  };
+
+  const confirmRejectOrder = async () => {
+    if (!selectedOrderToReject) return;
+    const orderToReject = selectedOrderToReject;
+    setRejectModalVisible(false);
+    setSelectedOrderToReject(null);
+    await handleRejectOrder(orderToReject);
+  };
+
   const handleRejectOrder = async (order) => {
     if (updating) return;
     setUpdating(true);
@@ -524,13 +539,30 @@ export default function OrdersScreen() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/acceptedorders/${order._id}/reject`, {
+      const targetOrderId = order._id || order.orderId || order.id;
+      if (!targetOrderId) {
+        setErrorModalMessage('Invalid order ID.');
+        setErrorModalVisible(true);
+        return;
+      }
+
+      let response = await fetch(`${API_URL}/api/acceptedorders/${targetOrderId}/reject`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ deliveryBoyId: userId }),
       });
+
+      if (response.status === 404 || response.status === 405) {
+        response = await fetch(`${API_URL}/api/acceptedorders/${targetOrderId}/reject`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ deliveryBoyId: userId }),
+        });
+      }
 
       if (response.ok) {
         await stopOrderSound();
@@ -599,7 +631,7 @@ export default function OrdersScreen() {
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Delivery fee</Text>
           <Text style={styles.detailSeparator}>-</Text>
-          <Text style={styles.detailValue}>₹ {item.deliveryFee ?? item.deliveryCharge ?? 0}</Text>
+          <Text style={styles.detailValue}>₹ {item.deliveryFee ?? item.deliveryCharge ?? item.deliverycharges ?? item.amount ?? item.total ?? 0}</Text>
         </View>
 
         {/* Buttons Row */}
@@ -614,7 +646,7 @@ export default function OrdersScreen() {
           <TouchableOpacity
             style={[styles.actionButton, styles.rejectButton]}
             activeOpacity={0.9}
-            onPress={() => handleRejectOrder(item)}
+            onPress={() => promptRejectOrder(item)}
           >
             <Text style={styles.buttonText}>Reject order</Text>
           </TouchableOpacity>
@@ -715,6 +747,42 @@ export default function OrdersScreen() {
             >
               <Text style={styles.modalButtonText}>OK</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rejection Confirmation Modal */}
+      <Modal
+        visible={rejectModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelRejectOrder}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalContainer}>
+            <View style={styles.confirmModalIconCircle}>
+              <Ionicons name="warning-outline" size={36} color="#FFFFFF" />
+            </View>
+            <Text style={styles.confirmModalTitle}>Reject Order?</Text>
+            <Text style={styles.confirmModalMessageText}>
+              Are you sure you want to reject this order?
+            </Text>
+            <View style={styles.confirmModalButtonRow}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmCancelButton]}
+                activeOpacity={0.8}
+                onPress={cancelRejectOrder}
+              >
+                <Text style={styles.confirmCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmRejectButton]}
+                activeOpacity={0.8}
+                onPress={confirmRejectOrder}
+              >
+                <Text style={styles.confirmRejectButtonText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -981,6 +1049,75 @@ const styles = StyleSheet.create({
   modalButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  confirmModalContainer: {
+    width: '85%',
+    maxWidth: 340,
+    backgroundColor: '#FAF9F6',
+    borderRadius: 28,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  confirmModalIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#CE3A31',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  confirmModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2A3037',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  confirmModalMessageText: {
+    fontSize: 15,
+    color: '#4A5568',
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  confirmModalButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmModalButton: {
+    flex: 1,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmCancelButton: {
+    backgroundColor: '#EAE5D9',
+    borderWidth: 1,
+    borderColor: '#DCD5C7',
+  },
+  confirmCancelButtonText: {
+    color: '#2A3037',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  confirmRejectButton: {
+    backgroundColor: '#CE3A31',
+  },
+  confirmRejectButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '700',
   },
 });

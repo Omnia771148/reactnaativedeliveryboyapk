@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, DeviceEventEmitter } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
+import { FontAwesome5, Ionicons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { DeviceEventEmitter, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
   const [user, setUser] = useState(null);
@@ -97,7 +97,7 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView 
+        <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
@@ -106,8 +106,8 @@ export default function ProfileScreen() {
         >
           {/* Header Navigation Bar */}
           <View style={styles.headerBar}>
-            <TouchableOpacity 
-              style={styles.backButton} 
+            <TouchableOpacity
+              style={styles.backButton}
               activeOpacity={0.8}
               onPress={() => router.back()}
             >
@@ -118,21 +118,40 @@ export default function ProfileScreen() {
               <Ionicons name="person" size={18} color="#2A3037" />
               <Text style={styles.headerTitleText}>My Profile</Text>
             </View>
-            
+
             {/* Spacer to align title center */}
             <View style={styles.headerSpacer} />
           </View>
 
           {/* Main Card (Sand/Beige Colored Container) */}
           <View style={styles.detailsCard}>
-            
+
+            {/* Profile Avatar Header */}
+            <View style={styles.avatarSection}>
+              {user?.profilePicUrl || user?.photoUrl ? (
+                <Image
+                  source={{ uri: user.profilePicUrl || user.photoUrl }}
+                  style={styles.avatarImage}
+                />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person" size={38} color="#FFFFFF" />
+                </View>
+              )}
+              <Text style={styles.avatarName}>{user?.name || 'Delivery Partner'}</Text>
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-circle" size={15} color="#2EBD6B" />
+                <Text style={styles.verifiedBadgeText}>Verified Partner</Text>
+              </View>
+            </View>
+
             {/* SECTION 1: PERSONAL DETAILS */}
             <Text style={styles.sectionHeader}>PERSONAL DETAILS</Text>
-            
+
             {/* Full Name */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="person-outline" size={20} color="#000000" />
+                <Ionicons name="person-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>FULL NAME</Text>
@@ -143,7 +162,7 @@ export default function ProfileScreen() {
             {/* Phone */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="call-outline" size={20} color="#000000" />
+                <Ionicons name="call-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>PHONE</Text>
@@ -154,7 +173,7 @@ export default function ProfileScreen() {
             {/* Email */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="mail-outline" size={20} color="#000000" />
+                <Ionicons name="mail-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>EMAIL</Text>
@@ -165,7 +184,7 @@ export default function ProfileScreen() {
             {/* Partner ID */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Text style={styles.hashIconText}>#</Text>
+                <Ionicons name="finger-print-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>PARTNER ID</Text>
@@ -179,7 +198,7 @@ export default function ProfileScreen() {
             {/* A/C Number */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="business-outline" size={20} color="#000000" />
+                <MaterialIcons name="account-balance" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>A/C NUMBER</Text>
@@ -190,7 +209,7 @@ export default function ProfileScreen() {
             {/* IFSC Code */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="grid-outline" size={20} color="#000000" />
+                <Ionicons name="code-working-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>IFSC CODE</Text>
@@ -204,7 +223,7 @@ export default function ProfileScreen() {
             {/* Aadhar */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="id-card-outline" size={20} color="#000000" />
+                <FontAwesome5 name="id-card" size={18} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>AADHAR</Text>
@@ -215,7 +234,7 @@ export default function ProfileScreen() {
             {/* RC Book */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="car-outline" size={20} color="#000000" />
+                <FontAwesome5 name="motorcycle" size={18} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>RC BOOK</Text>
@@ -226,7 +245,7 @@ export default function ProfileScreen() {
             {/* License */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="card-outline" size={20} color="#000000" />
+                <FontAwesome5 name="id-badge" size={18} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>LICENSE</Text>
@@ -237,7 +256,7 @@ export default function ProfileScreen() {
             {/* Joined */}
             <View style={styles.detailItem}>
               <View style={styles.iconContainer}>
-                <Ionicons name="calendar-outline" size={20} color="#000000" />
+                <Ionicons name="calendar-outline" size={20} color="#2A3037" />
               </View>
               <View style={styles.textContainer}>
                 <Text style={styles.label}>JOINED</Text>
@@ -279,7 +298,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000000',
@@ -291,7 +310,7 @@ const styles = StyleSheet.create({
   headerTitleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 30,
@@ -319,7 +338,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Safe padding above bottom navigation bar
   },
   detailsCard: {
-    backgroundColor: '#EAE5D9', // Sand/Beige colored background card
+    backgroundColor: '#DCD5C7', // Navigation bar background color
     marginHorizontal: 20,
     borderRadius: 28,
     padding: 20,
@@ -328,6 +347,52 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 3,
+  },
+  avatarSection: {
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingBottom: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
+  },
+  avatarImage: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    marginBottom: 10,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  avatarPlaceholder: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: '#2A3037',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  avatarName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#2A3037',
+    marginBottom: 4,
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+    gap: 4,
+  },
+  verifiedBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2EBD6B',
   },
   sectionHeader: {
     fontSize: 13,

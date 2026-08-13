@@ -296,33 +296,36 @@ export default function Layout() {
         const storedId = await AsyncStorage.getItem('userid');
         const storedSessionId = await AsyncStorage.getItem('sessionId');
 
-        if (storedId && storedSessionId) {
+        if (storedId) {
           const res = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userid: storedId, sessionId: storedSessionId }),
           }, 4000);
 
-          if (res.status === 401) {
+          if (res.status === 403 || res.status === 401) {
             const data = await res.json().catch(() => ({}));
-            if (data.code === 'SESSION_EXPIRED' || !res.ok) {
-              if (isMounted) {
-                await AsyncStorage.multiRemove([
-                  'userid',
-                  'sessionId',
-                  'name',
-                  'phone',
-                  'isActive',
-                  'updatedAt',
-                  'lastLoginDate',
-                ]);
-                stopDeliveryForegroundService();
-                Alert.alert(
-                  'Account Logged Out',
-                  'Your account was logged in from another device.',
-                  [{ text: 'OK', onPress: () => router.replace('/') }]
-                );
-              }
+            if (isMounted) {
+              await AsyncStorage.multiRemove([
+                'userid',
+                'sessionId',
+                'name',
+                'phone',
+                'isActive',
+                'updatedAt',
+                'lastLoginDate',
+              ]);
+              stopDeliveryForegroundService();
+              const alertTitle = (res.status === 403 || data.code === 'ACCOUNT_BLOCKED') ? 'Account Blocked' : 'Account Logged Out';
+              const alertMsg = (res.status === 403 || data.code === 'ACCOUNT_BLOCKED') 
+                ? 'Your account has been blocked by administration. You have been automatically logged out.'
+                : 'Your session has expired or was logged in from another device.';
+              
+              Alert.alert(
+                alertTitle,
+                alertMsg,
+                [{ text: 'OK', onPress: () => router.replace('/') }]
+              );
             }
           }
         }
@@ -362,6 +365,7 @@ export default function Layout() {
   };
 
   const playRepeatingSoundWithBreak = async () => {
+    if (isPlayingLoopRef.current) return;
     await stopSound();
     isPlayingLoopRef.current = true;
 
@@ -408,6 +412,18 @@ export default function Layout() {
       stopSound();
     });
 
+    const startSoundSub = DeviceEventEmitter.addListener('startOrderSound', () => {
+      playRepeatingSoundWithBreak();
+    });
+
+    if (Audio) {
+      Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      }).catch((err) => console.warn('Failed to set Audio mode in layout:', err));
+    }
+
     const setupNotifications = async () => {
       try {
         const storedId = await AsyncStorage.getItem('userid');
@@ -447,7 +463,7 @@ export default function Layout() {
 
             try {
               if (Audio) {
-                // Play notification sound once, wait 4s, and repeat until accepted/rejected
+                // Play notification sound continuously until accepted/rejected
                 await playRepeatingSoundWithBreak();
               } else {
                 console.warn('Audio is not available, skipping custom notification sound.');
@@ -480,7 +496,6 @@ export default function Layout() {
         unsubscribeNotificationOpened = messagingModule().onNotificationOpenedApp((remoteMessage) => {
           if (isMounted) {
             console.log('Notification caused app to open from background:', remoteMessage);
-            stopSound();
             router.push('/orders');
           }
         });
@@ -491,7 +506,6 @@ export default function Layout() {
           .then((remoteMessage) => {
             if (remoteMessage && isMounted) {
               console.log('Notification caused app to open from quit state:', remoteMessage);
-              stopSound();
               router.push('/orders');
             }
           });
@@ -511,8 +525,8 @@ export default function Layout() {
 
     return () => {
       isMounted = false;
-      stopSound();
       stopSoundSub.remove();
+      startSoundSub.remove();
       appStateSub.remove();
       if (unsubscribeMessage) unsubscribeMessage();
       if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();

@@ -42,29 +42,32 @@ export default function HomeScreen() {
         const lastLoginStr = await AsyncStorage.getItem('lastLoginDate');
 
         if (storedId) {
-          if (storedSessionId) {
-            try {
-              const verifyRes = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userid: storedId, sessionId: storedSessionId }),
-              }, 4000);
+          try {
+            const verifyRes = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userid: storedId, sessionId: storedSessionId }),
+            }, 4000);
 
-              if (verifyRes.status === 401) {
-                await AsyncStorage.multiRemove([
-                  'userid',
-                  'sessionId',
-                  'name',
-                  'phone',
-                  'isActive',
-                  'updatedAt',
-                  'lastLoginDate',
-                ]);
-                return;
+            if (verifyRes.status === 401 || verifyRes.status === 403) {
+              await AsyncStorage.multiRemove([
+                'userid',
+                'sessionId',
+                'name',
+                'phone',
+                'isActive',
+                'updatedAt',
+                'lastLoginDate',
+              ]);
+              if (verifyRes.status === 403) {
+                setModalType('error');
+                setModalMessage('Your account has been blocked by administration. Please contact support.');
+                setModalVisible(true);
               }
-            } catch (vErr) {
-              console.warn('Startup session verify error:', vErr);
+              return;
             }
+          } catch (vErr) {
+            console.warn('Startup session verify error:', vErr);
           }
 
           if (lastLoginStr) {
@@ -99,9 +102,17 @@ export default function HomeScreen() {
   }, []);
 
   const handleLogin = async () => {
+    const cleanedPhone = mobileNumber.trim().replace(/[^0-9]/g, '');
     if (!mobileNumber || !password) {
       setModalType('error');
       setModalMessage('Please enter both Mobile Number and Password.');
+      setModalVisible(true);
+      return;
+    }
+
+    if (cleanedPhone.length !== 10) {
+      setModalType('error');
+      setModalMessage('Please enter a valid 10-digit mobile number.');
       setModalVisible(true);
       return;
     }
@@ -181,10 +192,14 @@ export default function HomeScreen() {
       } else {
         if (res.data.errorType === 'NO_ACCOUNT') {
           setModalType('no_account');
-          setModalMessage('No Account Found');
+          setModalMessage('Phone Number Not Found');
         } else {
           setModalType('error');
-          setModalMessage(res.data.message || 'incorrect id and password');
+          const serverMsg = res.data.message;
+          const displayMsg = (serverMsg && serverMsg.toLowerCase() !== 'incorrect id and password')
+            ? serverMsg
+            : 'Incorrect ID or Password';
+          setModalMessage(displayMsg);
         }
         setModalVisible(true);
       }
@@ -227,7 +242,7 @@ export default function HomeScreen() {
                   style={styles.logoImage}
                   resizeMode="contain"
                 />
-                <Text adjustsFontSizeToFit numberOfLines={1} style={styles.logoText}>LEEVON DELIVERY</Text>
+                <Text style={styles.logoText}>LEEVON DELIVERY</Text>
               </View>
 
               {/* Form Inputs Container */}
@@ -420,6 +435,7 @@ const styles = StyleSheet.create({
     color: '#000000',
     textAlign: 'center',
     marginTop: 6,
+    paddingHorizontal: 16,
   },
   formContainer: {
     width: '100%',

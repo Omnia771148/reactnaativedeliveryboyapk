@@ -34,7 +34,7 @@ export default function LiveOrdersScreen() {
 
   const getPrepTimeVal = useCallback((order) => {
     if (!order) return null;
-    const raw =
+    let raw =
       order.preparationTime ??
       order.prepTime ??
       order.preparation_time ??
@@ -45,8 +45,23 @@ export default function LiveOrdersScreen() {
       order.timeToPrepare ??
       order.estimatedTime;
 
-    if (raw === undefined || raw === null || raw === '') return null;
-    return raw;
+    if (raw !== undefined && raw !== null && raw !== '') {
+      const parsed = typeof raw === 'number' ? raw : parseInt(String(raw).match(/\d+/)?.[0] || '0', 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+      return raw;
+    }
+
+    if (order.estimatedPrepEndTime) {
+      const end = new Date(order.estimatedPrepEndTime).getTime();
+      const startStr = order.acceptedAt || order.orderDate || order.createdAt || order.updatedAt;
+      const start = startStr ? new Date(startStr).getTime() : Date.now();
+      if (!isNaN(end) && !isNaN(start) && end > start) {
+        const diffMins = Math.round((end - start) / (60 * 1000));
+        if (diffMins > 0) return diffMins;
+      }
+    }
+
+    return null;
   }, []);
 
   useEffect(() => {
@@ -57,35 +72,46 @@ export default function LiveOrdersScreen() {
     }
 
     const rawPrep = getPrepTimeVal(activeOrder);
-    if (!rawPrep) {
-      setRemainingTimeText('');
-      setIsTimerOverdue(false);
-      return;
-    }
+    let targetTime = null;
 
-    let prepMinutes = null;
-    if (typeof rawPrep === 'number' && !isNaN(rawPrep)) {
-      prepMinutes = rawPrep;
-    } else if (typeof rawPrep === 'string') {
-      const match = rawPrep.match(/\d+/);
-      if (match) {
-        prepMinutes = parseInt(match[0], 10);
+    if (activeOrder.estimatedPrepEndTime) {
+      const parsedEnd = new Date(activeOrder.estimatedPrepEndTime).getTime();
+      if (!isNaN(parsedEnd)) {
+        targetTime = parsedEnd;
       }
     }
 
-    const startStr = activeOrder.acceptedAt || activeOrder.orderDate || activeOrder.createdAt || activeOrder.updatedAt;
-    const startTime = startStr ? new Date(startStr).getTime() : null;
+    if (!targetTime) {
+      if (!rawPrep) {
+        setRemainingTimeText('');
+        setIsTimerOverdue(false);
+        return;
+      }
 
-    const updateCountdown = () => {
+      let prepMinutes = null;
+      if (typeof rawPrep === 'number' && !isNaN(rawPrep)) {
+        prepMinutes = rawPrep;
+      } else if (typeof rawPrep === 'string') {
+        const match = rawPrep.match(/\d+/);
+        if (match) {
+          prepMinutes = parseInt(match[0], 10);
+        }
+      }
+
       if (!prepMinutes || isNaN(prepMinutes)) {
         setRemainingTimeText(String(rawPrep));
         setIsTimerOverdue(false);
         return;
       }
 
+      const startStr = activeOrder.acceptedAt || activeOrder.orderDate || activeOrder.createdAt || activeOrder.updatedAt;
+      const startTime = startStr ? new Date(startStr).getTime() : null;
+      const baseTime = startTime && !isNaN(startTime) ? startTime : Date.now();
+      targetTime = baseTime + prepMinutes * 60 * 1000;
+    }
+
+    const updateCountdown = () => {
       const now = Date.now();
-      const baseTime = startTime && !isNaN(startTime) ? startTime : now;
-      const targetTime = baseTime + prepMinutes * 60 * 1000;
       const diffMs = targetTime - now;
 
       if (diffMs > 0) {

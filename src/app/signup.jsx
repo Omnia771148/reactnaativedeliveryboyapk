@@ -81,6 +81,7 @@ export default function DeliveryBoySignup() {
   });
 
   const [selectedFiles, setSelectedFiles] = useState({
+    profilePicUrl: null,
     aadharUrl: null,
     rcUrl: null,
     licenseUrl: null,
@@ -322,6 +323,9 @@ export default function DeliveryBoySignup() {
     }
 
     // File Upload validation
+    if (!selectedFiles.profilePicUrl) {
+      errors.profilePicUrl = "Please upload Delivery Boy photo.";
+    }
     if (!selectedFiles.aadharUrl) {
       errors.aadharUrl = "Please upload Aadhar card photo.";
     }
@@ -345,9 +349,9 @@ export default function DeliveryBoySignup() {
     Keyboard.dismiss();
     setIsSendingOtp(true);
     try {
-      // Check if phone or email already exists in DB BEFORE sending OTP
+      // Check if phone or email already exists in DB IMMEDIATELY upon clicking Sign up button
       try {
-        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-existing`, {
+        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-phone`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -355,18 +359,32 @@ export default function DeliveryBoySignup() {
             formattedPhone: "+91" + form.phone.trim(),
             email: form.email ? form.email.trim().toLowerCase() : ''
           }),
-        }, 12000);
+        }, 10000);
 
-        const checkData = await checkRes.json().catch(() => null);
-        if (checkData && (checkData.exists || checkData.alreadyExists || checkRes.status === 400 || checkRes.status === 409)) {
+        let checkData = null;
+        try {
+          const text = await checkRes.text();
+          checkData = JSON.parse(text);
+        } catch (_e) {}
+
+        if (!checkRes.ok || (checkData && (checkData.exists || checkData.alreadyExists || checkData.success === false))) {
           setIsSendingOtp(false);
-          setModalMessage(checkData.message || "This phone number or email is already registered. Please log in.");
+          setModalMessage(
+            (checkData && checkData.message)
+              ? checkData.message
+              : "User already exists with this phone number or email. Please log in."
+          );
           setModalType("error");
           setModalVisible(true);
           return;
         }
       } catch (checkErr) {
-        console.warn("Check existing phone pre-verification warning/timeout:", checkErr);
+        console.error("Check existing user error:", checkErr);
+        setIsSendingOtp(false);
+        setModalMessage("Unable to verify user account. Please check your network connection and try again.");
+        setModalType("error");
+        setModalVisible(true);
+        return;
       }
 
       if (Platform.OS === "web") {
@@ -553,7 +571,7 @@ export default function DeliveryBoySignup() {
 
       // Re-verify that phone or email does not exist in DB before document upload & backend registration
       try {
-        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-existing`, {
+        const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-phone`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -574,7 +592,7 @@ export default function DeliveryBoySignup() {
       }
 
       // 2. Upload documents to Firebase Storage in PARALLEL for maximum speed
-      const fileKeys = ["aadharUrl", "rcUrl", "licenseUrl"];
+      const fileKeys = ["profilePicUrl", "aadharUrl", "rcUrl", "licenseUrl"];
       const uploadPromises = fileKeys.map(async (key) => {
         const fileObj = selectedFiles[key];
         if (!fileObj || !fileObj.uri) {
@@ -609,6 +627,10 @@ export default function DeliveryBoySignup() {
         ...form,
         email: form.email ? form.email.trim().toLowerCase() : '',
         ...uploadResults,
+        profilePicUrl: uploadResults.profilePicUrl || "",
+        photoUrl: uploadResults.profilePicUrl || "",
+        deliveryBoyPhotoUrl: uploadResults.profilePicUrl || "",
+        photo: uploadResults.profilePicUrl || "",
         firebaseUid: finalFirebaseUid,
         phone: "+91" + form.phone.trim(),
       };
@@ -701,14 +723,29 @@ export default function DeliveryBoySignup() {
       </View>
 
       <SafeAreaView style={styles.safeArea}>
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.replace("/")}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color="#333" />
-        </TouchableOpacity>
+        {/* Top Header Bar */}
+        <View style={styles.topHeaderBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/");
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={24} color="#333333" />
+          </TouchableOpacity>
+
+          <View style={styles.welcomeHeader}>
+            <Text style={styles.welcomeTitle}>Welcome</Text>
+          </View>
+
+          {/* Spacer for symmetry */}
+          <View style={{ width: 44 }} />
+        </View>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -722,12 +759,6 @@ export default function DeliveryBoySignup() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-          {/* Welcome Header */}
-          <View style={styles.welcomeHeaderContainer}>
-            <View style={styles.welcomeHeader}>
-              <Text style={styles.welcomeTitle}> Welcome </Text>
-            </View>
-          </View>
 
           {errorMessage ? (
             <View style={styles.errorAlert}>
@@ -950,6 +981,35 @@ export default function DeliveryBoySignup() {
                 </View>
               </View>
 
+              {/* Delivery Boy Photo Upload */}
+              <View style={styles.uploadContainer}>
+                <Text style={styles.uploadLabel}>Delivery boy photo :</Text>
+                <View style={styles.uploadCard}>
+                  <TouchableOpacity
+                    style={[
+                      styles.uploadFileBtn,
+                      validationErrors.profilePicUrl && styles.errorBorder,
+                    ]}
+                    onPress={() => handleFileChange("profilePicUrl")}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.uploadFileBtnText,
+                        selectedFiles.profilePicUrl ? styles.fileSelectedText : null,
+                      ]}
+                    >
+                      {selectedFiles.profilePicUrl
+                        ? selectedFiles.profilePicUrl.name
+                        : "Choose file or photo"}
+                    </Text>
+                  </TouchableOpacity>
+                  {validationErrors.profilePicUrl && (
+                    <Text style={styles.uploadErrorText}>{validationErrors.profilePicUrl}</Text>
+                  )}
+                </View>
+              </View>
+
               {/* Aadhar Upload */}
               <View style={styles.uploadContainer}>
                 <Text style={styles.uploadLabel}>Aadhar card :</Text>
@@ -1150,14 +1210,6 @@ export default function DeliveryBoySignup() {
               </TouchableOpacity>
               <View style={styles.otpActionsContainer}>
                 <TouchableOpacity
-                  onPress={() => setIsOtpSent(false)}
-                  activeOpacity={0.7}
-                  style={styles.changePhoneBtn}
-                >
-                  <Text style={styles.changePhoneText}>Change Phone Number</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
                   onPress={handleResendOtp}
                   disabled={resendTimer > 0}
                   activeOpacity={resendTimer > 0 ? 1 : 0.7}
@@ -1166,6 +1218,14 @@ export default function DeliveryBoySignup() {
                   <Text style={resendTimer > 0 ? styles.resendOtpTextDisabled : styles.resendOtpText}>
                     {resendTimer > 0 ? `Resend OTP (${resendTimer}s)` : "Resend OTP"}
                   </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setIsOtpSent(false)}
+                  activeOpacity={0.7}
+                  style={styles.changePhoneBtn}
+                >
+                  <Text style={styles.changePhoneText}>Change Phone Number</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1231,17 +1291,28 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
+  topHeaderBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 4,
+    width: "100%",
+    zIndex: 10,
+  },
   backButton: {
-    position: "absolute",
-    left: 20,
-    top: Platform.OS === "ios" ? 50 : 20,
     backgroundColor: "#FFFFFF",
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 100,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
   scrollView: {
     flex: 1,
@@ -1250,24 +1321,29 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: 24,
-    paddingTop: 80,
+    paddingTop: 10,
     paddingBottom: 40,
   },
   welcomeHeaderContainer: {
-    marginBottom: 30,
+    marginBottom: 20,
   },
   welcomeHeader: {
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 50,
-    paddingVertical: 12,
+    paddingHorizontal: 36,
+    paddingVertical: 8,
     borderRadius: 35,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
   },
   welcomeTitle: {
     fontFamily: "CursiveScript",
-    fontSize: 50,
+    fontSize: 44,
     fontWeight: "normal",
     fontStyle: "normal",
-    paddingHorizontal: 20,
+    paddingHorizontal: 12,
     overflow: "visible",
     color: "#333",
     textAlign: "center",
@@ -1309,18 +1385,25 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
   },
   errorAlert: {
-    backgroundColor: "#FDEDEC",
-    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
     borderColor: "#E55B49",
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 35,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     width: "100%",
     maxWidth: 340,
     marginBottom: 20,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   errorAlertText: {
     color: "#E55B49",
     fontSize: 14,
+    fontWeight: "600",
     textAlign: "center",
   },
   sectionDivider: {
@@ -1460,11 +1543,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   otpActionsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "center",
     width: "100%",
-    marginTop: 16,
-    paddingHorizontal: 4,
+    marginTop: 18,
+    gap: 10,
   },
   changePhoneBtn: {
     paddingVertical: 8,
@@ -1480,12 +1563,13 @@ const styles = StyleSheet.create({
   resendOtpText: {
     color: "#E55B49",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     textDecorationLine: "underline",
   },
   resendOtpTextDisabled: {
-    color: "#aaa",
+    color: "#444444",
     fontSize: 14,
+    fontWeight: "700",
     textDecorationLine: "none",
   },
   eyeIcon: {

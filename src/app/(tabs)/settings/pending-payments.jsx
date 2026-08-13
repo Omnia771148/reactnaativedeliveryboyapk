@@ -55,28 +55,66 @@ export default function PendingPaymentsScreen() {
 
   const formatAmount = (val) => {
     const num = Number(val || 0);
+    if (isNaN(num)) return '0.00';
     return num.toLocaleString('en-IN', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   };
 
+  const getItemAmount = (item) => {
+    if (!item) return 0;
+    const val = item.amount ?? item.deliveryCharge ?? item.deliverycharges ?? item.total ?? item.price ?? item.earnings ?? 0;
+    const num = Number(val);
+    return isNaN(num) ? 0 : num;
+  };
+
   const formatDate = (item) => {
+    if (typeof item === 'string') return item;
     if (item.date) return item.date;
-    const rawDate = item.createdAt || item.timestamp;
+    const rawDate = item.createdAt || item.timestamp || item.updatedAt || item.paymentDate;
     const d = rawDate ? new Date(rawDate) : new Date();
-    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   const formatTime = (item) => {
+    if (typeof item === 'string') return '';
     if (item.time) return item.time;
-    const rawDate = item.createdAt || item.timestamp;
+    const rawDate = item.createdAt || item.timestamp || item.updatedAt || item.paymentDate;
     const d = rawDate ? new Date(rawDate) : new Date();
-    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
+    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
   };
 
-  const deliveryChargesVal = pendingData?.deliverycharges ?? pendingData?.deliveryCharge ?? 0;
-  const transactionsList = (pendingData?.transactions && Array.isArray(pendingData.transactions)) ? pendingData.transactions : [];
+  const transactionsList = Array.isArray(pendingData?.transactions)
+    ? pendingData.transactions
+    : Array.isArray(pendingData?.history)
+    ? pendingData.history
+    : Array.isArray(pendingData?.paymentHistory)
+    ? pendingData.paymentHistory
+    : Array.isArray(pendingData?.payments)
+    ? pendingData.payments
+    : Array.isArray(pendingData?.orders)
+    ? pendingData.orders
+    : Array.isArray(pendingData)
+    ? pendingData
+    : [];
+
+  const rawGrandTotal =
+    pendingData?.grandTotal ??
+    pendingData?.totalPending ??
+    pendingData?.pendingAmount ??
+    pendingData?.pendingPayment ??
+    pendingData?.totalAmount ??
+    pendingData?.deliverycharges ??
+    pendingData?.deliveryCharge ??
+    pendingData?.amount ??
+    pendingData?.total ??
+    null;
+
+  const deliveryChargesVal = (rawGrandTotal !== null && rawGrandTotal !== undefined)
+    ? Number(rawGrandTotal)
+    : transactionsList.reduce((sum, item) => sum + getItemAmount(item), 0);
+
   const hasTransactions = transactionsList.length > 0;
   const transactionCount = transactionsList.length;
 
@@ -146,8 +184,8 @@ export default function PendingPaymentsScreen() {
             </View>
           </View>
 
-          {/* Transactions Section - Displayed if and only if transactions array exists and has items */}
-          {hasTransactions && (
+          {/* Transactions Section */}
+          {hasTransactions ? (
             <View style={styles.transactionsSection}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>Transactions</Text>
@@ -169,7 +207,7 @@ export default function PendingPaymentsScreen() {
                       <Text style={styles.txIdText}>{item.transactionId || item.id || item._id || 'N/A'}</Text>
                     </View>
 
-                    <Text style={styles.txAmountText}>₹{formatAmount(item.amount)}</Text>
+                    <Text style={styles.txAmountText}>₹{formatAmount(getItemAmount(item))}</Text>
                   </View>
 
                   <View style={styles.txDivider} />
@@ -180,14 +218,17 @@ export default function PendingPaymentsScreen() {
                       <Ionicons name="calendar-outline" size={13} color="#666666" />
                       <Text style={styles.pillText}>{formatDate(item)}</Text>
                     </View>
-
-                    <View style={styles.pillContainer}>
-                      <Ionicons name="time-outline" size={13} color="#666666" />
-                      <Text style={styles.pillText}>{formatTime(item)}</Text>
-                    </View>
                   </View>
                 </View>
               ))}
+            </View>
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Ionicons name="receipt-outline" size={48} color="#A0A0A0" />
+              <Text style={styles.emptyStateTitle}>No Transactions Found</Text>
+              <Text style={styles.emptyStateSubtext}>
+                You have no pending payments or past transaction records at this time.
+              </Text>
             </View>
           )}
 
@@ -217,7 +258,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000000',
@@ -229,7 +270,7 @@ const styles = StyleSheet.create({
   headerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EAE5D9', // Sand/beige pill background matching screenshot header
+    backgroundColor: '#DCD5C7', // Navigation bar background color
     paddingHorizontal: 22,
     paddingVertical: 10,
     borderRadius: 26,
@@ -411,5 +452,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#4A4A4A',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2A3037',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#8E8882',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

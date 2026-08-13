@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
   headerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7', // Navigation bar background color
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 30,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   buttonsContainer: {
-    backgroundColor: '#EAE5D9', // Matching the warm sand/beige tone
+    backgroundColor: '#DCD5C7', // Navigation bar background color
     marginHorizontal: 20,
     borderRadius: 28,
     padding: 16,

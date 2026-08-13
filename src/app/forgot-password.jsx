@@ -150,7 +150,11 @@ export default function ForgotPassword() {
       }
       const checkData = await checkRes.json();
       if (!checkRes.ok || !checkData.success) {
-        setError(checkData.message || "Phone number not found.");
+        const msg = checkData.message || "Phone number not found.";
+        setError(msg);
+        setModalType("error");
+        setModalMessage(msg);
+        setModalVisible(true);
         setIsLoading(false);
         return;
       }
@@ -317,14 +321,16 @@ export default function ForgotPassword() {
   // Step 3: Reset Password
   const handleResetPassword = async () => {
     setError("");
+    setConfirmPasswordError("");
 
-    if (newPassword.length < 4) {
-      setError("Password must be at least 4 characters");
+    if (!newPassword || newPassword.length < 4) {
+      setError("Password must be at least 4 characters.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setConfirmPasswordError("Passwords do not match.");
+      setError("Passwords do not match.");
       return;
     }
 
@@ -356,34 +362,25 @@ export default function ForgotPassword() {
       }
     } catch (err) {
       console.error("Reset Error:", err);
-      setError("Something went wrong");
-      Alert.alert("Error", "Something went wrong while resetting the password.");
+      setError("Something went wrong while resetting the password.");
     } finally {
       setIsLoading(false);
     }
   };
 
   // Real-time password change and mismatch validation
-  const handlePasswordChange = (name, val) => {
-    if (name === "newPassword") {
+  const handlePasswordChange = (field, val) => {
+    if (field === "newPassword") {
       setNewPassword(val);
-      if (confirmPassword) {
-        if (confirmPassword.length >= val.length ? confirmPassword !== val : !val.startsWith(confirmPassword)) {
-          setConfirmPasswordError("Passwords do not match.");
-        } else {
-          setConfirmPasswordError("");
-        }
+      if (confirmPassword && val !== confirmPassword) {
+        setConfirmPasswordError("Passwords do not match.");
       } else {
         setConfirmPasswordError("");
       }
-    } else if (name === "confirmPassword") {
+    } else if (field === "confirmPassword") {
       setConfirmPassword(val);
-      if (val && newPassword) {
-        if (val.length >= newPassword.length ? val !== newPassword : !newPassword.startsWith(val)) {
-          setConfirmPasswordError("Passwords do not match.");
-        } else {
-          setConfirmPasswordError("");
-        }
+      if (newPassword && val !== newPassword) {
+        setConfirmPasswordError("Passwords do not match.");
       } else {
         setConfirmPasswordError("");
       }
@@ -391,16 +388,38 @@ export default function ForgotPassword() {
   };
   return (
     <View style={styles.container}>
+      {/* Split background matching app theme */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <View style={styles.splitBackground}>
+          <View style={styles.leftBackground} />
+          <View style={styles.rightBackground} />
+        </View>
+      </View>
+
       <SafeAreaView style={styles.safeArea}>
-        {/* Back Button */}
-        <TouchableOpacity
-          onClick={() => router.replace("/")}
-          onPress={() => router.replace("/")}
-          style={styles.backButton}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="arrow-back" size={22} color="#333" />
-        </TouchableOpacity>
+        {/* Top Header Bar */}
+        <View style={styles.topHeaderBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/");
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={24} color="#333333" />
+          </TouchableOpacity>
+
+          <View style={styles.welcomeHeader}>
+            <Text style={styles.welcomeTitle}>Reset Password</Text>
+          </View>
+
+          {/* Spacer for symmetry */}
+          <View style={{ width: 44 }} />
+        </View>
 
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -414,12 +433,6 @@ export default function ForgotPassword() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
           >
-            {/* Header Title Section */}
-            <View style={styles.titleSection}>
-              <Text style={styles.titleText}>Forgot Password?</Text>
-              <Text style={styles.subtitleText}>Recover your account</Text>
-            </View>
-
             {/* Error Alert Display */}
             {error ? (
               <View style={styles.errorAlert}>
@@ -428,18 +441,22 @@ export default function ForgotPassword() {
             ) : null}
 
             {/* Form Card Layout */}
-            <View style={styles.formCard}>
+            <View style={styles.formWrapper}>
               {step === 1 && (
                 <View style={styles.stepContainer}>
-                  <TextInput
-                    style={styles.inputField}
-                    placeholder="Enter phone number"
-                    placeholderTextColor="#777"
-                    keyboardType="number-pad"
-                    value={phone}
-                    onChangeText={(val) => setPhone(val.replace(/[^0-9]/g, ""))}
-                    maxLength={10}
-                  />
+                  <Text style={styles.stepSubtitle}>Enter your registered mobile number</Text>
+                  <View style={styles.customInputGroup}>
+                    <Ionicons name="call-outline" size={18} color="#aaa" style={{ marginRight: 12 }} />
+                    <TextInput
+                      style={styles.customInput}
+                      placeholder="Enter 10-digit phone number"
+                      placeholderTextColor="#aaa"
+                      keyboardType="number-pad"
+                      value={phone}
+                      onChangeText={(val) => setPhone(val.replace(/[^0-9]/g, ""))}
+                      maxLength={10}
+                    />
+                  </View>
 
                   <TouchableOpacity
                     style={styles.submitBtn}
@@ -458,17 +475,21 @@ export default function ForgotPassword() {
                     <Text style={styles.otpInfoText}>OTP sent to +91 {phone}</Text>
                   </View>
 
-                  <TextInput
-                    placeholder="Enter 6-digit OTP"
-                    placeholderTextColor="#aaa"
-                    keyboardType="numeric"
-                    maxLength={6}
-                    autoComplete="sms-otp"
-                    textContentType="oneTimeCode"
-                    value={otp}
-                    onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
-                    style={styles.otpInputField}
-                  />
+                  <Text style={styles.stepSubtitle}>Please enter the OTP received via SMS</Text>
+
+                  <View style={styles.customInputGroup}>
+                    <TextInput
+                      placeholder="000000"
+                      placeholderTextColor="#aaa"
+                      keyboardType="numeric"
+                      maxLength={6}
+                      autoComplete="sms-otp"
+                      textContentType="oneTimeCode"
+                      value={otp}
+                      onChangeText={(val) => setOtp(val.replace(/\D/g, "").slice(0, 6))}
+                      style={styles.otpInputField}
+                    />
+                  </View>
 
                   <TouchableOpacity
                     style={styles.submitBtn}
@@ -503,15 +524,17 @@ export default function ForgotPassword() {
 
               {step === 3 && (
                 <View style={styles.stepContainer}>
+                  <Text style={styles.stepSubtitle}>Create a new password for your account</Text>
                   {/* New Password Input */}
-                  <View style={[styles.inputWrapper, { marginBottom: 16 }]}>
+                  <View style={[styles.customInputGroup, { marginBottom: 16 }]}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#aaa" style={{ marginRight: 12 }} />
                     <TextInput
                       placeholder="New Password"
                       placeholderTextColor="#aaa"
                       secureTextEntry={!showNewPassword}
                       value={newPassword}
                       onChangeText={(val) => handlePasswordChange("newPassword", val)}
-                      style={styles.inputFieldInside}
+                      style={styles.customInput}
                     />
                     <TouchableOpacity
                       onPress={() => setShowNewPassword(!showNewPassword)}
@@ -528,17 +551,18 @@ export default function ForgotPassword() {
 
                   {/* Confirm New Password Input */}
                   <View style={[
-                    styles.inputWrapper, 
+                    styles.customInputGroup, 
                     confirmPasswordError ? styles.errorBorder : null,
-                    { marginBottom: confirmPasswordError ? 12 : 35 }
+                    { marginBottom: confirmPasswordError ? 12 : 24 }
                   ]}>
+                    <Ionicons name="lock-closed-outline" size={18} color="#aaa" style={{ marginRight: 12 }} />
                     <TextInput
                       placeholder="Confirm New Password"
                       placeholderTextColor="#aaa"
                       secureTextEntry={!showConfirmPassword}
                       value={confirmPassword}
                       onChangeText={(val) => handlePasswordChange("confirmPassword", val)}
-                      style={styles.inputFieldInside}
+                      style={styles.customInput}
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -611,22 +635,62 @@ export default function ForgotPassword() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F9F7F1", // Outer page background color
+  },
+  splitBackground: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  leftBackground: {
+    flex: 1,
+    backgroundColor: "#FAF9F6", // Cream
+  },
+  rightBackground: {
+    flex: 1,
+    backgroundColor: "#DCD5C7", // Sand
   },
   safeArea: {
     flex: 1,
   },
+  topHeaderBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 10 : 16,
+    paddingBottom: 12,
+    width: "100%",
+    zIndex: 10,
+  },
   backButton: {
-    position: "absolute",
-    left: 20,
-    top: Platform.OS === "ios" ? 50 : 20,
     backgroundColor: "#FFFFFF",
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 100,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  welcomeHeader: {
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 30,
+    paddingVertical: 8,
+    borderRadius: 35,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  welcomeTitle: {
+    fontFamily: "CursiveScript",
+    fontSize: 38,
+    fontWeight: "normal",
+    color: "#333333",
+    textAlign: "center",
   },
   scrollView: {
     flex: 1,
@@ -635,77 +699,64 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: "center",
     paddingHorizontal: 24,
-    paddingTop: 100,
+    paddingTop: 20,
     paddingBottom: 40,
   },
-  titleSection: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  titleText: {
-    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif", // Cursive fallback matching Great Vibes feel
-    fontSize: 42,
-    fontWeight: "600",
-    color: "#111",
-    textAlign: "center",
-  },
-  subtitleText: {
-    fontSize: 16,
-    color: "#555",
-    marginTop: 5,
-  },
   errorAlert: {
-    backgroundColor: "#FDEDEC",
-    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
     borderColor: "#E55B49",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 35,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     width: "100%",
     maxWidth: 340,
-    marginBottom: 24,
+    marginBottom: 20,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   errorAlertText: {
     color: "#E55B49",
     fontSize: 14,
+    fontWeight: "600",
     textAlign: "center",
   },
-  formCard: {
-    backgroundColor: "#E2D3C1", // Form card background color
-    borderRadius: 30,
-    paddingVertical: 36,
-    paddingHorizontal: 24,
+  formWrapper: {
     width: "100%",
     maxWidth: 340,
-    alignItems: "center",
   },
   stepContainer: {
     width: "100%",
     alignItems: "center",
   },
-  inputField: {
-    backgroundColor: "#FFFFFF",
-    width: "100%",
-    height: 54,
-    borderRadius: 30,
-    paddingHorizontal: 24,
-    fontSize: 16,
-    color: "#333",
-    marginBottom: 35,
+  stepSubtitle: {
+    fontSize: 14,
+    color: "#555",
+    textAlign: "center",
+    marginBottom: 20,
   },
-  inputWrapper: {
+  customInputGroup: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    width: "100%",
+    borderRadius: 35,
+    paddingHorizontal: 20,
     height: 54,
-    borderRadius: 30,
-    paddingHorizontal: 24,
+    width: "100%",
+    marginBottom: 20,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  inputFieldInside: {
+  customInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     color: "#333",
-    height: "100%",
   },
   eyeIcon: {
     position: "absolute",
@@ -721,67 +772,67 @@ const styles = StyleSheet.create({
   errorText: {
     color: "#E55B49",
     fontSize: 12,
-    marginTop: -25,
-    marginBottom: 20,
+    marginTop: -14,
+    marginBottom: 16,
     alignSelf: "flex-start",
     paddingLeft: 10,
-  },
-  infoText: {
-    color: "#555",
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 20,
   },
   otpInfoBadge: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 30,
-    marginBottom: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 35,
+    marginBottom: 16,
     gap: 8,
     width: "100%",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   otpInfoText: {
-    color: "#333333",
+    color: "#2EBD6B",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     textAlign: "center",
   },
   otpInputField: {
-    backgroundColor: "#FFFFFF",
-    width: "100%",
-    height: 54,
-    borderRadius: 30,
-    paddingHorizontal: 24,
-    fontSize: 20,
+    flex: 1,
+    fontSize: 22,
     fontWeight: "700",
-    letterSpacing: 4,
+    letterSpacing: 8,
     textAlign: "center",
     color: "#333",
-    marginBottom: 24,
   },
   submitBtn: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 48,
-    paddingVertical: 14,
-    borderRadius: 30,
+    backgroundColor: "#333333",
+    width: "100%",
+    height: 54,
+    borderRadius: 35,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 8,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   submitBtnText: {
-    color: "#000000",
-    fontSize: 18,
-    fontWeight: "500",
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
   },
   otpActionsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    alignItems: "center",
+    justifyContent: "center",
     width: "100%",
-    marginTop: 20,
-    paddingHorizontal: 4,
+    marginTop: 18,
+    gap: 10,
   },
   changeBtn: {
     paddingVertical: 6,
@@ -797,12 +848,13 @@ const styles = StyleSheet.create({
   resendOtpText: {
     color: "#E55B49",
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "700",
     textDecorationLine: "underline",
   },
   resendOtpTextDisabled: {
-    color: "#888",
+    color: "#444444",
     fontSize: 14,
+    fontWeight: "700",
     textDecorationLine: "none",
   },
   loadingOverlay: {

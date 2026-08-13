@@ -105,7 +105,7 @@ export default function ContactScreen() {
               <View style={styles.iconContainer}>
                 <Ionicons name="call" size={22} color="#000000" />
               </View>
-              <Text style={styles.valueText}>🇮🇳 +91 7207610235</Text>
+              <Text style={styles.valueText}>+91 7207610235</Text>
             </TouchableOpacity>
 
             {/* Email */}
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000000',
@@ -220,7 +220,7 @@ const styles = StyleSheet.create({
   headerTitleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7',
     paddingHorizontal: 28,
     paddingVertical: 12,
     borderRadius: 30,
