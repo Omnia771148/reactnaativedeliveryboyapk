@@ -5,8 +5,9 @@ import { Animated, AppState, DeviceEventEmitter, StyleSheet, TouchableOpacity, V
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
-import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import { registerForFCMAsync, saveFCMTokenToBackend, ensureFCMTokenRegistered } from '@/utils/notifications';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { playOrderSound, stopOrderSoundNative } from '@/utils/soundService';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 
@@ -18,12 +19,24 @@ Notifications.setNotificationHandler({
   }),
 });
 
-let Audio = null;
-try {
-  Audio = require('expo-av').Audio;
-} catch (e) {
-  console.warn('expo-av is not available in this environment:', e);
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('order_notifications', {
+    name: 'Order Notifications',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 500, 200, 500, 200, 500],
+    lightColor: '#008000',
+    sound: 'ordernotification.wav',
+    enableVibrate: true,
+    enableLights: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    audioAttributes: {
+      usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+    },
+  }).catch((err) => console.warn('Failed to set Android notification channel:', err));
 }
+
+// Notification Channel configured for order_notifications
 
 // Custom Tab Bar component with sliding circle transition
 function CustomTabBar({ state, descriptors, navigation }) {
@@ -43,6 +56,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
 
         if (!userIsActive) {
           if (isMounted) setOrderCount(0);
+          DeviceEventEmitter.emit('stopOrderSound');
           return;
         }
 
@@ -62,9 +76,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
           } catch (err) {}
         }
 
-        const fetchUrl = storedId
-          ? `${API_URL}/api/acceptedorders?deliveryBoyId=${storedId}`
-          : `${API_URL}/api/acceptedorders`;
+        const fetchUrl = `${API_URL}/api/acceptedorders`;
         const response = await fetch(fetchUrl);
         if (response.ok) {
           const text = await response.text();
@@ -81,7 +93,14 @@ function CustomTabBar({ state, descriptors, navigation }) {
             activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
           }
 
-          if (isMounted) setOrderCount(activeOrders.length);
+          if (isMounted) {
+            setOrderCount(activeOrders.length);
+            if (activeOrders.length > 0 && !currentActiveOrderId) {
+              DeviceEventEmitter.emit('startOrderSound');
+            } else {
+              DeviceEventEmitter.emit('stopOrderSound');
+            }
+          }
         }
       } catch (e) {
         // ignore fetch error
@@ -265,16 +284,7 @@ export default function Layout() {
   const [orderModalData, setOrderModalData] = useState({ title: '', body: '' });
 
   useEffect(() => {
-    // Enable audio playback in background and lock screen
-    if (Audio) {
-      Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        staysActiveInBackground: true,
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-        playThroughEarpieceAndroid: false,
-      }).catch((e) => console.warn('setAudioModeAsync warning:', e));
-    }
+
 
     // Restore foreground service if driver was OPEN when app was last open
     AsyncStorage.getItem('isActive').then((val) => {
@@ -354,53 +364,12 @@ export default function Layout() {
       clearTimeout(soundTimeoutRef.current);
       soundTimeoutRef.current = null;
     }
-    if (currentSoundRef.current) {
-      try {
-        await currentSoundRef.current.stopAsync();
-        await currentSoundRef.current.unloadAsync();
-      } catch (e) {
-        console.warn('Error stopping sound:', e);
-      }
-      currentSoundRef.current = null;
-    }
+    await stopOrderSoundNative();
   };
 
   const playRepeatingSoundWithBreak = async () => {
-    if (isPlayingLoopRef.current) return;
-    await stopSound();
     isPlayingLoopRef.current = true;
-
-    const playOneCycle = async () => {
-      if (!isPlayingLoopRef.current || !Audio) return;
-
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          require('../../../assets/ordernotification.wav'),
-          { shouldPlay: true, isLooping: false }
-        );
-        currentSoundRef.current = sound;
-
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
-            currentSoundRef.current = null;
-
-            if (isPlayingLoopRef.current) {
-              // Wait 4 seconds after sound completes before playing again
-              soundTimeoutRef.current = setTimeout(() => {
-                if (isPlayingLoopRef.current) {
-                  playOneCycle();
-                }
-              }, 4000);
-            }
-          }
-        });
-      } catch (err) {
-        console.error('Failed to play custom notification sound:', err);
-      }
-    };
-
-    playOneCycle();
+    await playOrderSound();
   };
 
   useEffect(() => {
@@ -417,24 +386,20 @@ export default function Layout() {
       playRepeatingSoundWithBreak();
     });
 
-    if (Audio) {
-      Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-      }).catch((err) => console.warn('Failed to set Audio mode in layout:', err));
-    }
+
 
     const setupNotifications = async () => {
       try {
         const storedId = await AsyncStorage.getItem('userid');
         if (!storedId) return;
 
-        // Register for push notifications and get FCM token
-        const token = await registerForFCMAsync();
-        if (token && isMounted) {
-          await saveFCMTokenToBackend(storedId, token);
-        }
+        // Clean up any previously attached FCM listeners to avoid duplicates
+        if (unsubscribeMessage) { unsubscribeMessage(); unsubscribeMessage = null; }
+        if (unsubscribeTokenRefresh) { unsubscribeTokenRefresh(); unsubscribeTokenRefresh = null; }
+        if (unsubscribeNotificationOpened) { unsubscribeNotificationOpened(); unsubscribeNotificationOpened = null; }
+
+        // Register for push notifications and ensure token is synced to backend DB
+        await ensureFCMTokenRegistered(storedId);
 
         if (isExpoGo) {
           console.log('Skipping FCM notification setup: running in Expo Go');
@@ -462,15 +427,34 @@ export default function Layout() {
           if (isMounted) {
             console.log('Foreground Message received:', remoteMessage);
 
+            // Check if delivery boy already has an active order in progress/tracker
+            let hasActiveOrderInTracker = false;
             try {
-              if (Audio) {
-                // Play notification sound continuously until accepted/rejected
-                await playRepeatingSoundWithBreak();
-              } else {
-                console.warn('Audio is not available, skipping custom notification sound.');
+              if (storedId) {
+                const activeRes = await fetch(`${API_URL}/api/deliveryboy/${storedId}/activeorder`);
+                if (activeRes.ok) {
+                  const activeText = await activeRes.text();
+                  if (activeText && activeText.trim().length > 0) {
+                    const activeJson = JSON.parse(activeText);
+                    if (activeJson && activeJson.orderId) {
+                      hasActiveOrderInTracker = true;
+                    }
+                  }
+                }
               }
-            } catch (error) {
-              console.error('Failed to play custom notification sound:', error);
+            } catch (err) {
+              console.warn('Failed to check active order status in foreground handler:', err);
+            }
+
+            if (!hasActiveOrderInTracker) {
+              try {
+                await playRepeatingSoundWithBreak();
+              } catch (error) {
+                console.error('Failed to play custom notification sound:', error);
+              }
+            } else {
+              console.log('User has active order in tracker; suppressing sound.');
+              await stopSound();
             }
 
             // Refresh orders count and list in app
@@ -498,6 +482,7 @@ export default function Layout() {
           if (isMounted) {
             console.log('Notification caused app to open from background:', remoteMessage);
             router.push('/orders');
+            DeviceEventEmitter.emit('refreshOrdersCount');
           }
         });
 
@@ -508,6 +493,7 @@ export default function Layout() {
             if (remoteMessage && isMounted) {
               console.log('Notification caused app to open from quit state:', remoteMessage);
               router.push('/orders');
+              DeviceEventEmitter.emit('refreshOrdersCount');
             }
           });
 
@@ -524,11 +510,20 @@ export default function Layout() {
       }
     });
 
+    const expoNotifResponseSub = Notifications.addNotificationResponseReceivedListener((_response) => {
+      if (isMounted) {
+        console.log('Expo local notification tapped by user, navigating to orders');
+        router.push('/orders');
+        DeviceEventEmitter.emit('refreshOrdersCount');
+      }
+    });
+
     return () => {
       isMounted = false;
       stopSoundSub.remove();
       startSoundSub.remove();
       appStateSub.remove();
+      expoNotifResponseSub.remove();
       if (unsubscribeMessage) unsubscribeMessage();
       if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();
       if (unsubscribeNotificationOpened) unsubscribeNotificationOpened();

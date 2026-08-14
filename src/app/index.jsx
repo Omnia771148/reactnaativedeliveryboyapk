@@ -2,7 +2,7 @@ import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import { registerForFCMAsync, saveFCMTokenToBackend, ensureFCMTokenRegistered } from '@/utils/notifications';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -181,11 +181,11 @@ export default function HomeScreen() {
 
         // Register FCM Token & save to backend for instant notifications
         if (userIdStr) {
-          registerForFCMAsync().then((fcmToken) => {
-            if (fcmToken) {
-              saveFCMTokenToBackend(userIdStr, fcmToken);
-            }
-          }).catch(console.error);
+          try {
+            await ensureFCMTokenRegistered(userIdStr);
+          } catch (notifErr) {
+            console.error('Failed to register FCM token during login:', notifErr);
+          }
         }
 
         console.log('Successfully saved user session:', res.data.user);
@@ -239,7 +239,7 @@ export default function HomeScreen() {
               {/* Header Title: LEEVON */}
               <View style={styles.logoContainer}>
                 <Image
-                  source={require('@/assets/images/company-logo.png')}
+                  source={require('@/assets/images/logo.png')}
                   style={styles.logoImage}
                   resizeMode="contain"
                 />
@@ -257,7 +257,7 @@ export default function HomeScreen() {
                     placeholderTextColor="#A5A5A5"
                     keyboardType="number-pad"
                     value={mobileNumber}
-                    onChangeText={(text) => setMobileNumber(text.replace(/[^0-9]/g, ''))}
+                    onChangeText={(text) => setMobileNumber((text || '').replace(/[^0-9]/g, ''))}
                     editable={!loading}
                     maxLength={10}
                   />

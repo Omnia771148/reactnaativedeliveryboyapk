@@ -8,12 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, DeviceEventEmitter, FlatList, Linking, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-let Audio = null;
-try {
-  Audio = require('expo-av').Audio;
-} catch (e) {
-  console.warn('expo-av is not available in this environment:', e);
-}
+
 
 const customAlert = (title, message, buttons = []) => {
   if (Platform.OS === 'web') {
@@ -68,60 +63,11 @@ export default function OrdersScreen() {
   const isPlayingLoopRef = useRef(false);
 
   const stopOrderSound = async () => {
-    isPlayingLoopRef.current = false;
-    if (soundTimeoutRef.current) {
-      clearTimeout(soundTimeoutRef.current);
-      soundTimeoutRef.current = null;
-    }
-    if (currentSoundRef.current) {
-      try {
-        await currentSoundRef.current.stopAsync();
-        await currentSoundRef.current.unloadAsync();
-      } catch (e) {
-        // Ignore if sound already stopped or unloaded
-      }
-      currentSoundRef.current = null;
-    }
+    DeviceEventEmitter.emit('stopOrderSound');
   };
 
   const playSound = async () => {
-    if (!Audio) {
-      console.warn('Audio is not available, skipping playSound.');
-      return;
-    }
-    await stopOrderSound();
-    isPlayingLoopRef.current = true;
-
-    const playOneCycle = async () => {
-      if (!isPlayingLoopRef.current) return;
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          require('@/assets/ordernotification.wav'),
-          { shouldPlay: true, isLooping: false }
-        );
-        currentSoundRef.current = sound;
-
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
-            if (currentSoundRef.current === sound) {
-              currentSoundRef.current = null;
-            }
-            if (isPlayingLoopRef.current) {
-              soundTimeoutRef.current = setTimeout(() => {
-                if (isPlayingLoopRef.current) {
-                  playOneCycle();
-                }
-              }, 4000);
-            }
-          }
-        });
-      } catch (error) {
-        console.error('Failed to play order notification sound:', error);
-      }
-    };
-
-    playOneCycle();
+    DeviceEventEmitter.emit('startOrderSound');
   };
 
   useEffect(() => {
@@ -189,9 +135,7 @@ export default function OrdersScreen() {
       }
       setHasActiveOrder(hasActive);
 
-      const fetchUrl = storedId
-        ? `${API_URL}/api/acceptedorders?deliveryBoyId=${storedId}`
-        : `${API_URL}/api/acceptedorders`;
+      const fetchUrl = `${API_URL}/api/acceptedorders`;
       const response = await fetch(fetchUrl);
       if (response.ok) {
         let data = [];
@@ -216,14 +160,10 @@ export default function OrdersScreen() {
           activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
         }
 
-        if (activeOrders.length === 0) {
-          stopOrderSound();
+        if (activeOrders.length === 0 || hasActive || currentActiveOrderId) {
           DeviceEventEmitter.emit('stopOrderSound');
-        } else if (userIsActive && !hasActive) {
-          if (!isPlayingLoopRef.current) {
-            playSound();
-            DeviceEventEmitter.emit('startOrderSound');
-          }
+        } else if (userIsActive) {
+          DeviceEventEmitter.emit('startOrderSound');
         }
 
         ordersRef.current = activeOrders;
@@ -243,19 +183,7 @@ export default function OrdersScreen() {
   };
 
   useEffect(() => {
-    const setupAudio = async () => {
-      if (!Audio) return;
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
-        });
-      } catch (err) {
-        console.warn('Failed to setup audio mode:', err);
-      }
-    };
-    setupAudio();
+
 
     const loadInitialStatus = async () => {
       try {

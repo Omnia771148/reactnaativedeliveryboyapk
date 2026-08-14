@@ -2,7 +2,7 @@ import { BrandHeader } from '@/components/brand-header';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { styles } from '@/styles/homepage';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
-import { requestNotificationPermission, registerForFCMAsync, saveFCMTokenToBackend } from '@/utils/notifications';
+import { requestNotificationPermission, registerForFCMAsync, saveFCMTokenToBackend, ensureFCMTokenRegistered } from '@/utils/notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -67,6 +67,9 @@ export default function HomepageScreen() {
         }
         setIsActive(!!data.isActive);
         await AsyncStorage.setItem('isActive', String(!!data.isActive));
+
+        // Always ensure FCM push token is synced to DB for the user
+        ensureFCMTokenRegistered(userIdToUse).catch(console.error);
       }
 
       // Fetch latest earnings statistics
@@ -217,12 +220,11 @@ export default function HomepageScreen() {
         await fetchEarnings(userid);
 
         if (targetStatus) {
-          registerForFCMAsync().then((token) => {
-            if (token && userid) {
-              saveFCMTokenToBackend(userid, token);
-            }
-          }).catch(console.error);
-
+          try {
+            await ensureFCMTokenRegistered(userid);
+          } catch (tokErr) {
+            console.error('Error syncing FCM token on toggle online:', tokErr);
+          }
           router.replace('/orders');
         }
       } else {

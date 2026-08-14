@@ -27,7 +27,7 @@ export class ErrorBoundary extends React.Component {
             <Text style={styles.icon}>⚠️</Text>
             <Text style={styles.title}>Something went wrong</Text>
             <Text style={styles.message}>
-              An unexpected error occurred. Please try again.
+              {this.state.error?.message || this.state.error?.toString() || 'An unexpected error occurred. Please try again.'}
             </Text>
             <TouchableOpacity style={styles.button} onPress={this.handleReset}>
               <Text style={styles.buttonText}>Try Again</Text>

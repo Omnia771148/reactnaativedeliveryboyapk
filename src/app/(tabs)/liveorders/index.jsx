@@ -491,6 +491,7 @@ export default function LiveOrdersScreen() {
     if (modalType === 'success') {
       setOtp(['', '', '', '', '']); // Clear input
       await fetchActiveOrder(userid); // Returns to empty state
+      DeviceEventEmitter.emit('refreshOrdersCount');
       router.replace('/homepage');
     } else {
       // Focus back on first OTP box

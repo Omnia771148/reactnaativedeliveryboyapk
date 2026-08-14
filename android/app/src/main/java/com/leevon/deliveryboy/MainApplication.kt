@@ -25,6 +25,7 @@ class MainApplication : Application(), ReactApplication {
           // add(MyReactNativePackage())
           add(BatteryOptimizationPackage())
           add(ForegroundServicePackage())
+          add(SoundPackage())
         }
     )
   }
