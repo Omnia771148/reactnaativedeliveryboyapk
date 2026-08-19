@@ -123,9 +123,9 @@ export default function OrdersScreen() {
             const text = await activeCheckResponse.text();
             if (text && text.trim().length > 0) {
               const activeData = JSON.parse(text);
-              if (activeData && activeData.orderId) {
+              if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
                 hasActive = true;
-                currentActiveOrderId = activeData.orderId;
+                currentActiveOrderId = activeData._id || activeData.orderId || activeData.id;
               }
             }
           }
@@ -362,7 +362,7 @@ export default function OrdersScreen() {
           const text = await activeCheckResponse.text();
           if (text && text.trim().length > 0) {
             const activeData = JSON.parse(text);
-            if (activeData && activeData.orderId) {
+            if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
               setHasActiveOrder(true);
               setErrorModalMessage('You already have an active order.\n\nPlease complete your current order before accepting a new one.');
               setErrorModalVisible(true);

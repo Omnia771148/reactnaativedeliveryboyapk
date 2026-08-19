@@ -349,7 +349,7 @@ export default function DeliveryBoySignup() {
     Keyboard.dismiss();
     setIsSendingOtp(true);
     try {
-      // Check if phone or email already exists in DB IMMEDIATELY upon clicking Sign up button
+      // Check if phone or email already exists in DB BEFORE sending OTP
       try {
         const checkRes = await fetchWithTimeout(`${API_URL}/api/deliveryboy/check-phone`, {
           method: 'POST',
@@ -367,19 +367,42 @@ export default function DeliveryBoySignup() {
           checkData = JSON.parse(text);
         } catch (_e) {}
 
-        if (!checkRes.ok || (checkData && (checkData.exists || checkData.alreadyExists || checkData.success === false))) {
+        const userAlreadyExists = Boolean(
+          checkData && (
+            checkData.exists === true ||
+            checkData.alreadyExists === true ||
+            checkData.userExists === true ||
+            checkData.existsPhone === true ||
+            checkData.existsEmail === true ||
+            (checkData.message && (
+              String(checkData.message).toLowerCase().includes('already') ||
+              String(checkData.message).toLowerCase().includes('exist') ||
+              String(checkData.message).toLowerCase().includes('registered')
+            ))
+          )
+        );
+
+        if (userAlreadyExists) {
           setIsSendingOtp(false);
-          setModalMessage(
-            (checkData && checkData.message)
-              ? checkData.message
-              : "User already exists with this phone number or email. Please log in."
-          );
+          let existMsg = "User already exists with this phone number or email. Please log in.";
+          if (checkData && checkData.message && (
+            String(checkData.message).toLowerCase().includes('already') ||
+            String(checkData.message).toLowerCase().includes('exist') ||
+            String(checkData.message).toLowerCase().includes('registered')
+          )) {
+            existMsg = checkData.message;
+          } else if (checkData && checkData.existsPhone) {
+            existMsg = "This phone number is already registered. Please log in.";
+          } else if (checkData && checkData.existsEmail) {
+            existMsg = "This email address is already registered. Please log in.";
+          }
+          setModalMessage(existMsg);
           setModalType("error");
           setModalVisible(true);
           return;
         }
       } catch (checkErr) {
-        console.error("Check existing user error:", checkErr);
+        console.error("Check existing user error before OTP:", checkErr);
         setIsSendingOtp(false);
         setModalMessage("Unable to verify user account. Please check your network connection and try again.");
         setModalType("error");
@@ -1296,8 +1319,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 2,
-    paddingBottom: 4,
+    paddingTop: Platform.OS === "ios" ? 10 : 16,
+    paddingBottom: 10,
     width: "100%",
     zIndex: 10,
   },
@@ -1329,22 +1352,27 @@ const styles = StyleSheet.create({
   },
   welcomeHeader: {
     backgroundColor: "#FFFFFF",
-    paddingHorizontal: 36,
-    paddingVertical: 8,
+    paddingHorizontal: 32,
+    paddingVertical: 10,
     borderRadius: 35,
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   welcomeTitle: {
     fontFamily: "CursiveScript",
-    fontSize: 44,
+    fontSize: 40,
     fontWeight: "normal",
     fontStyle: "normal",
+    lineHeight: 52,
     paddingHorizontal: 12,
-    overflow: "visible",
+    paddingTop: 4,
+    paddingBottom: 4,
+    includeFontPadding: false,
     color: "#333",
     textAlign: "center",
   },

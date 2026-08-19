@@ -175,9 +175,22 @@ export default function HomeScreen() {
         await AsyncStorage.setItem('sessionId', sessionIdStr);
         await AsyncStorage.setItem('name', res.data.user.name ? String(res.data.user.name) : '');
         await AsyncStorage.setItem('phone', res.data.user.phone ? String(res.data.user.phone) : '');
-        await AsyncStorage.setItem('isActive', String(!!res.data.user.isActive));
+        await AsyncStorage.setItem('isActive', 'true');
         await AsyncStorage.setItem('updatedAt', res.data.user.updatedAt ? String(res.data.user.updatedAt) : '');
         await AsyncStorage.setItem('lastLoginDate', new Date().toISOString());
+
+        // Automatically set delivery boy status to ON in backend upon login
+        if (userIdStr) {
+          try {
+            await fetchWithTimeout(`${API_URL}/api/users/${userIdStr}/status`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ isActive: true }),
+            }, 5000);
+          } catch (statusErr) {
+            console.warn('Auto-set active status error on login:', statusErr);
+          }
+        }
 
         // Register FCM Token & save to backend for instant notifications
         if (userIdStr) {
@@ -188,7 +201,7 @@ export default function HomeScreen() {
           }
         }
 
-        console.log('Successfully saved user session:', res.data.user);
+        console.log('Successfully saved user session and activated status ON:', res.data.user);
         router.replace('/homepage');
       } else {
         if (res.data.errorType === 'NO_ACCOUNT') {

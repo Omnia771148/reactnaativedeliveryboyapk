@@ -14,8 +14,8 @@
       "package": "com.leevon.deliveryboy",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "backgroundColor": "#0D0E12",
-        "foregroundImage": "./assets/images/app-icon.png"
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "permissions": [
         "android.permission.INTERNET",
@@ -37,11 +37,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#0D0E12",
+          "backgroundColor": "#000000",
           "resizeMode": "contain",
+          "image": "./assets/images/splash-icon.png",
           "android": {
-            "image": "./assets/images/app-icon.png",
-            "imageWidth": 140
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 200,
+            "backgroundColor": "#000000"
           }
         }
       ],

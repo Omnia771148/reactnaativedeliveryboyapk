@@ -27,6 +27,7 @@ export default function LiveOrdersScreen() {
 
   // Pickup confirmation modal state
   const [pickupModalVisible, setPickupModalVisible] = useState(false);
+  const [isLocallyPickedUp, setIsLocallyPickedUp] = useState(false);
 
   // Preparation time & live countdown timer state
   const [remainingTimeText, setRemainingTimeText] = useState('');
@@ -149,9 +150,19 @@ export default function LiveOrdersScreen() {
         }
         if (data) {
           setActiveOrder(data);
+          const orderKey = data._id || data.orderId || data.id;
+          if (orderKey) {
+            try {
+              const savedPickedState = await AsyncStorage.getItem(`pickedup_${orderKey}`);
+              if (savedPickedState === 'true') {
+                setIsLocallyPickedUp(true);
+              }
+            } catch (_e) {}
+          }
         }
       } else if (response.status === 404) {
         setActiveOrder(null);
+        setIsLocallyPickedUp(false);
       } else {
         console.error('Failed to fetch active order:', response.status);
       }
@@ -354,7 +365,10 @@ export default function LiveOrdersScreen() {
 
     setUpdating(true);
     try {
-      const response = await fetch(`${API_URL}/api/acceptedbydeliveries/${activeOrder.orderId}/pickup`, {
+      const primaryId = activeOrder._id || activeOrder.orderId || activeOrder.id;
+      const secondaryId = activeOrder.orderId || activeOrder._id || activeOrder.id;
+
+      let response = await fetch(`${API_URL}/api/acceptedbydeliveries/${primaryId}/pickup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -372,7 +386,53 @@ export default function LiveOrdersScreen() {
         data = { message: `Server returned invalid response (Status: ${response.status}).\n\nPreview: ${snippet}` };
       }
 
-      if (response.ok) {
+      // If primary ID failed with not found / 404, try secondary ID
+      if (!response.ok && secondaryId && secondaryId !== primaryId) {
+        try {
+          const altResponse = await fetch(`${API_URL}/api/acceptedbydeliveries/${secondaryId}/pickup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (altResponse.ok) {
+            response = altResponse;
+            try {
+              const altText = await altResponse.text();
+              data = JSON.parse(altText);
+            } catch (_e) {}
+          }
+        } catch (_altErr) {}
+      }
+
+      // Fallback endpoint if needed
+      if (!response.ok) {
+        try {
+          const altResponse = await fetch(`${API_URL}/api/acceptedorders/${primaryId}/pickup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          });
+          if (altResponse.ok) {
+            response = altResponse;
+            try {
+              const altText = await altResponse.text();
+              data = JSON.parse(altText);
+            } catch (_e) {}
+          }
+        } catch (_altErr) {}
+      }
+
+      const msg = (data.message || '').toLowerCase();
+      const isAlreadyPickedUp = msg.includes('already') || msg.includes('picked') || msg.includes('delivery');
+
+      if (response.ok || isAlreadyPickedUp) {
+        const orderKey = primaryId || secondaryId;
+        if (orderKey) {
+          try {
+            await AsyncStorage.setItem(`pickedup_${orderKey}`, 'true');
+          } catch (_e) {}
+        }
+        setIsLocallyPickedUp(true);
         // Refresh local state to render OTP input layout
         await fetchActiveOrder(userid);
       } else {
@@ -449,7 +509,10 @@ export default function LiveOrdersScreen() {
 
     setUpdating(true);
     try {
-      const response = await fetch(`${API_URL}/api/acceptedbydeliveries/${activeOrder.orderId}/complete`, {
+      const primaryId = activeOrder._id || activeOrder.orderId || activeOrder.id;
+      const secondaryId = activeOrder.orderId || activeOrder._id || activeOrder.id;
+
+      let response = await fetch(`${API_URL}/api/acceptedbydeliveries/${primaryId}/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -467,7 +530,31 @@ export default function LiveOrdersScreen() {
         data = { message: `Server returned invalid response (Status: ${response.status}).\n\nPreview: ${snippet}` };
       }
 
+      if (!response.ok && secondaryId && secondaryId !== primaryId) {
+        try {
+          const altResponse = await fetch(`${API_URL}/api/acceptedbydeliveries/${secondaryId}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ otp: otpString }),
+          });
+          if (altResponse.ok) {
+            response = altResponse;
+            try {
+              const altText = await altResponse.text();
+              data = JSON.parse(altText);
+            } catch (_e) {}
+          }
+        } catch (_altErr) {}
+      }
+
       if (response.ok) {
+        const orderKey = primaryId || secondaryId;
+        if (orderKey) {
+          try {
+            await AsyncStorage.removeItem(`pickedup_${orderKey}`);
+          } catch (_e) {}
+        }
+        setIsLocallyPickedUp(false);
         setModalType('success');
         setModalMessage('Order completed successfully!');
         setModalVisible(true);
@@ -489,6 +576,13 @@ export default function LiveOrdersScreen() {
   const handleModalClose = async () => {
     setModalVisible(false);
     if (modalType === 'success') {
+      const orderKey = activeOrder?._id || activeOrder?.orderId || activeOrder?.id;
+      if (orderKey) {
+        try {
+          await AsyncStorage.removeItem(`pickedup_${orderKey}`);
+        } catch (_e) {}
+      }
+      setIsLocallyPickedUp(false);
       setOtp(['', '', '', '', '']); // Clear input
       await fetchActiveOrder(userid); // Returns to empty state
       DeviceEventEmitter.emit('refreshOrdersCount');
@@ -501,7 +595,26 @@ export default function LiveOrdersScreen() {
     }
   };
 
-  const isOutForDelivery = activeOrder?.status === 'out for delivery';
+  const statusStr = String(
+    activeOrder?.status ||
+    activeOrder?.orderStatus ||
+    activeOrder?.deliveryStatus ||
+    activeOrder?.order_status ||
+    activeOrder?.delivery_status ||
+    ''
+  ).toLowerCase().trim();
+
+  const isOutForDelivery =
+    isLocallyPickedUp ||
+    statusStr.includes('out') ||
+    statusStr.includes('pick') ||
+    statusStr.includes('transit') ||
+    statusStr.includes('way') ||
+    statusStr.includes('dispatch') ||
+    activeOrder?.isPickedUp === true ||
+    activeOrder?.pickedUp === true ||
+    activeOrder?.is_picked_up === true ||
+    activeOrder?.picked_up === true;
 
   if (loading) {
     return <LoadingOverlay visible={true} />;

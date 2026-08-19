@@ -70,19 +70,29 @@ export default function PendingPaymentsScreen() {
   };
 
   const formatDate = (item) => {
-    if (typeof item === 'string') return item;
-    if (item.date) return item.date;
-    const rawDate = item.createdAt || item.timestamp || item.updatedAt || item.paymentDate;
-    const d = rawDate ? new Date(rawDate) : new Date();
-    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    if (!item) return 'N/A';
+    const rawDate = typeof item === 'object'
+      ? (item.date || item.createdAt || item.timestamp || item.updatedAt || item.paymentDate)
+      : item;
+    if (!rawDate) return 'N/A';
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) {
+      return String(rawDate).split('T')[0];
+    }
+    return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
   const formatTime = (item) => {
-    if (typeof item === 'string') return '';
-    if (item.time) return item.time;
-    const rawDate = item.createdAt || item.timestamp || item.updatedAt || item.paymentDate;
-    const d = rawDate ? new Date(rawDate) : new Date();
-    return isNaN(d.getTime()) ? 'N/A' : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
+    if (!item) return '';
+    const rawDate = typeof item === 'object'
+      ? (item.time || item.createdAt || item.timestamp || item.updatedAt || item.paymentDate || item.date)
+      : item;
+    if (!rawDate) return '';
+    const d = new Date(rawDate);
+    if (isNaN(d.getTime())) {
+      return typeof item === 'object' && item.time ? item.time : '';
+    }
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).toLowerCase();
   };
 
   const transactionsList = Array.isArray(pendingData?.transactions)
@@ -218,6 +228,13 @@ export default function PendingPaymentsScreen() {
                       <Ionicons name="calendar-outline" size={13} color="#666666" />
                       <Text style={styles.pillText}>{formatDate(item)}</Text>
                     </View>
+
+                    {formatTime(item) ? (
+                      <View style={styles.pillContainer}>
+                        <Ionicons name="time-outline" size={13} color="#666666" />
+                        <Text style={styles.pillText}>{formatTime(item)}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               ))}

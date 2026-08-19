@@ -68,8 +68,8 @@ function CustomTabBar({ state, descriptors, navigation }) {
               const text = await activeCheckResponse.text();
               if (text && text.trim().length > 0) {
                 const activeData = JSON.parse(text);
-                if (activeData && activeData.orderId) {
-                  currentActiveOrderId = activeData.orderId;
+                if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
+                  currentActiveOrderId = activeData._id || activeData.orderId || activeData.id;
                 }
               }
             }
@@ -282,6 +282,13 @@ const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreCl
 export default function Layout() {
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [orderModalData, setOrderModalData] = useState({ title: '', body: '' });
+  const [blockedModalVisible, setBlockedModalVisible] = useState(false);
+  const [blockedModalMessage, setBlockedModalMessage] = useState('');
+
+  const handleBlockedModalClose = () => {
+    setBlockedModalVisible(false);
+    router.replace('/');
+  };
 
   useEffect(() => {
 
@@ -307,6 +314,26 @@ export default function Layout() {
         const storedSessionId = await AsyncStorage.getItem('sessionId');
 
         if (storedId) {
+          // Check if delivery boy has a live active order in progress
+          let hasActiveOrder = false;
+          try {
+            const activeRes = await fetch(`${API_URL}/api/deliveryboy/${storedId}/activeorder`);
+            if (activeRes.ok) {
+              const activeText = await activeRes.text();
+              if (activeText && activeText.trim().length > 0) {
+                const activeData = JSON.parse(activeText);
+                if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
+                  hasActiveOrder = true;
+                }
+              }
+            }
+          } catch (activeErr) {}
+
+          // Do NOT log out delivery partner while they have a live active order
+          if (hasActiveOrder) {
+            return;
+          }
+
           const res = await fetchWithTimeout(`${API_URL}/api/verify-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -327,16 +354,12 @@ export default function Layout() {
               ]);
               stopDeliveryForegroundService();
               const isActuallyBlocked = data.isBlocked === true || data.code === 'ACCOUNT_BLOCKED';
-              const alertTitle = isActuallyBlocked ? 'Account Blocked' : 'Session Expired';
               const alertMsg = isActuallyBlocked
-                ? 'Your account has been blocked by administration. You have been automatically logged out.'
+                ? 'Your account has been blocked by administration. Please contact support.'
                 : 'Your session has expired or was logged in from another device.';
 
-              Alert.alert(
-                alertTitle,
-                alertMsg,
-                [{ text: 'OK', onPress: () => router.replace('/') }]
-              );
+              setBlockedModalMessage(alertMsg);
+              setBlockedModalVisible(true);
             }
           }
         }
@@ -560,11 +583,31 @@ export default function Layout() {
         />
         <Tabs.Screen
           name="settings"
-          options={{
-            title: 'Settings',
-          }}
-        />
       </Tabs>
+
+      {/* Custom Styled Account Blocked / Session Modal matching app theme */}
+      <Modal
+        visible={blockedModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleBlockedModalClose}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalIconCircle}>
+              <Ionicons name="close" size={44} color="#FFFFFF" />
+            </View>
+            <Text style={styles.modalMessageText}>{blockedModalMessage}</Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              activeOpacity={0.8}
+              onPress={handleBlockedModalClose}
+            >
+              <Text style={styles.modalButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -810,5 +853,51 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     fontWeight: '600',
     fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '85%',
+    maxWidth: 320,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 30,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  modalIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#CE3A31', // Crimson Red matching password & alert icons
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalMessageText: {
+    fontSize: 20,
+    color: '#000000',
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 28,
+    marginBottom: 28,
+    paddingHorizontal: 8,
+  },
+  modalButton: {
+    backgroundColor: '#000000', // Black button matching app design system
+    width: '90%',
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
