@@ -1,16 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform, Modal, Linking } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { LoadingOverlay } from '@/components/loading-overlay';
+import { API_URL } from '@/constants/api';
+import { stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { API_URL } from '@/constants/api';
-import { LoadingOverlay } from '@/components/loading-overlay';
-import { stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { useEffect, useState } from 'react';
+import { Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const [user, setUser] = useState({ name: 'sai', phone: '6301366183' });
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const [activeOrderAlertVisible, setActiveOrderAlertVisible] = useState(false);
+  const [activeOrderAlertMessage, setActiveOrderAlertMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Load name and phone from AsyncStorage on mount
@@ -19,7 +21,7 @@ export default function SettingsScreen() {
       try {
         const storedName = await AsyncStorage.getItem('name');
         const storedPhone = await AsyncStorage.getItem('phone');
-        
+
         setUser({
           name: storedName || 'sai',
           phone: storedPhone || '6301366183',
@@ -32,8 +34,34 @@ export default function SettingsScreen() {
     loadUserData();
   }, []);
 
-  // Handle logout trigger
-  const handleLogout = () => {
+  // Handle logout trigger with active order check
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      const storedId = await AsyncStorage.getItem('userid');
+      if (storedId) {
+        const response = await fetch(`${API_URL}/api/deliveryboy/${storedId}/activeorder`);
+        if (response.ok) {
+          const text = await response.text();
+          if (text && text.trim().length > 0) {
+            const activeData = JSON.parse(text);
+            if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
+              setLoading(false);
+              setActiveOrderAlertMessage(
+                'You cannot log out while you have an active delivery order. Please complete your active order first.'
+              );
+              setActiveOrderAlertVisible(true);
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error checking active order before logout:', err);
+    } finally {
+      setLoading(false);
+    }
+
     setLogoutModalVisible(true);
   };
 
@@ -122,7 +150,7 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        
+
         {/* Settings Pill Header */}
         <View style={styles.headerContainer}>
           <View style={styles.headerBadge}>
@@ -148,8 +176,8 @@ export default function SettingsScreen() {
         {/* Buttons List Container (Sand colored card) */}
         <View style={styles.buttonsContainer}>
           {/* My Profile */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
+          <TouchableOpacity
+            style={styles.menuButton}
             activeOpacity={0.8}
             onPress={() => router.push('/settings/profile')}
           >
@@ -161,8 +189,8 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* My Orders */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
+          <TouchableOpacity
+            style={styles.menuButton}
             activeOpacity={0.8}
             onPress={() => router.push('/settings/orders')}
           >
@@ -174,8 +202,8 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* My Reviews */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
+          <TouchableOpacity
+            style={styles.menuButton}
             activeOpacity={0.8}
             onPress={() => router.push('/settings/reviews')}
           >
@@ -187,8 +215,8 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* Pending Payments */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
+          <TouchableOpacity
+            style={styles.menuButton}
             activeOpacity={0.8}
             onPress={() => router.push('/settings/pending-payments')}
           >
@@ -200,8 +228,8 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* Contact Us */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
+          <TouchableOpacity
+            style={styles.menuButton}
             activeOpacity={0.8}
             onPress={() => router.push('/settings/contact')}
           >
@@ -213,8 +241,8 @@ export default function SettingsScreen() {
           </TouchableOpacity>
 
           {/* Logout (Triggers actual action) */}
-          <TouchableOpacity 
-            style={[styles.menuButton, styles.logoutButton]} 
+          <TouchableOpacity
+            style={[styles.menuButton, styles.logoutButton]}
             onPress={handleLogout}
             activeOpacity={0.8}
           >
@@ -246,8 +274,8 @@ export default function SettingsScreen() {
             <Text style={styles.modalTitle}>Are you sure you want{"\n"}to logout?</Text>
 
             {/* Black Logout Button */}
-            <TouchableOpacity 
-              style={styles.modalLogoutButton} 
+            <TouchableOpacity
+              style={styles.modalLogoutButton}
               activeOpacity={0.85}
               onPress={confirmPerformLogout}
             >
@@ -255,12 +283,37 @@ export default function SettingsScreen() {
             </TouchableOpacity>
 
             {/* Not Now Link */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.modalCancelButton}
               activeOpacity={0.7}
               onPress={() => setLogoutModalVisible(false)}
             >
               <Text style={styles.modalCancelText}>Not now</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Styled Active Order Blocked Modal matching screenshot */}
+      <Modal
+        visible={activeOrderAlertVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveOrderAlertVisible(false)}
+      >
+        <View style={styles.activeModalOverlay}>
+          <View style={styles.activeModalContainer}>
+            <View style={styles.activeModalIconCircle}>
+              <Ionicons name="close" size={38} color="#FFFFFF" />
+            </View>
+            <Text style={styles.activeModalTitleText}>Active Order Pending</Text>
+            <Text style={styles.activeModalMessageText}>{activeOrderAlertMessage}</Text>
+            <TouchableOpacity
+              style={styles.activeModalButton}
+              activeOpacity={0.85}
+              onPress={() => setActiveOrderAlertVisible(false)}
+            >
+              <Text style={styles.activeModalButtonText}>OK</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -462,5 +515,62 @@ const styles = StyleSheet.create({
     color: '#666666',
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  activeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  activeModalContainer: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FAF9F6', // Off-white cream shade matching screenshot
+    borderRadius: 24,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  activeModalIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#E55B49', // Coral red accent circle matching screenshot
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  activeModalTitleText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#000000',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  activeModalMessageText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#333333',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  activeModalButton: {
+    backgroundColor: '#000000',
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 25,
+    alignItems: 'center',
+  },
+  activeModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

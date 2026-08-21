@@ -145,13 +145,19 @@ export default function OrdersScreen() {
         } catch (_e) {
           console.error('Failed to parse accepted orders JSON');
         }
-        // Filter out orders that have already been rejected by this user or accepted by another delivery boy
+        // Filter out orders that have already been accepted or assigned
         let activeOrders = storedId
           ? (Array.isArray(data) ? data.filter(order => {
             const notRejected = !order.rejectedBy || !order.rejectedBy.includes(storedId);
-            // Show order if it is unassigned OR assigned to this delivery boy specifically
-            const isAvailableOrMine = !order.deliveryBoyId || order.deliveryBoyId === storedId;
-            return notRejected && isAvailableOrMine;
+            const isUnassigned =
+              !order.deliveryBoyId &&
+              !order.deliveryBoyName &&
+              !order.deliveryDetails &&
+              order.status !== 'accepted' &&
+              order.status !== 'out_for_delivery' &&
+              order.status !== 'completed' &&
+              order.isAccepted !== true;
+            return notRejected && isUnassigned;
           }) : [])
           : data;
 
@@ -184,7 +190,6 @@ export default function OrdersScreen() {
 
   useEffect(() => {
 
-
     const loadInitialStatus = async () => {
       try {
         const storedActive = await AsyncStorage.getItem('isActive');
@@ -203,17 +208,12 @@ export default function OrdersScreen() {
       fetchOrders();
     }, 5000);
 
-    const sub = DeviceEventEmitter.addListener('stopOrderSound', () => {
-      stopOrderSound();
-    });
-
     const refreshSub = DeviceEventEmitter.addListener('refreshOrdersCount', () => {
       fetchOrders();
     });
 
     return () => {
       clearInterval(intervalId);
-      sub.remove();
       refreshSub.remove();
     };
   }, []);
@@ -355,25 +355,7 @@ export default function OrdersScreen() {
         return;
       }
 
-      // Live check with backend to prevent race condition
-      try {
-        const activeCheckResponse = await fetch(`${API_URL}/api/deliveryboy/${deliveryBoyId}/activeorder`);
-        if (activeCheckResponse.ok) {
-          const text = await activeCheckResponse.text();
-          if (text && text.trim().length > 0) {
-            const activeData = JSON.parse(text);
-            if (activeData && (activeData._id || activeData.orderId || activeData.id)) {
-              setHasActiveOrder(true);
-              setErrorModalMessage('You already have an active order.\n\nPlease complete your current order before accepting a new one.');
-              setErrorModalVisible(true);
-              return;
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed live active order check:', err);
-      }
-
+      // Send order accept POST request directly
       const response = await fetch(`${API_URL}/api/acceptedorders/${order._id}/accept`, {
         method: 'POST',
         headers: {
@@ -395,9 +377,10 @@ export default function OrdersScreen() {
       }
 
       if (response.ok) {
-        await stopOrderSound();
+        setOrders((prev) => prev.filter(o => o._id !== order._id && o.orderId !== order.orderId));
+        setHasActiveOrder(true);
         DeviceEventEmitter.emit('stopOrderSound');
-        fetchOrders();
+        DeviceEventEmitter.emit('refreshOrdersCount');
         router.replace('/liveorders');
       } else {
         // Double check if the order has been accepted by someone else in case of error (500, 409, etc.)

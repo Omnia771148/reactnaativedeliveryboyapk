@@ -162,7 +162,7 @@ export default function MyReviewsScreen() {
           <TouchableOpacity
             style={styles.backButton}
             activeOpacity={0.8}
-            onPress={() => router.back()}
+            onPress={() => router.replace('/settings')}
           >
             <Ionicons name="arrow-back" size={20} color="#000000" />
           </TouchableOpacity>

@@ -64,7 +64,19 @@ export default function PendingPaymentsScreen() {
 
   const getItemAmount = (item) => {
     if (!item) return 0;
-    const val = item.amount ?? item.deliveryCharge ?? item.deliverycharges ?? item.total ?? item.price ?? item.earnings ?? 0;
+    const val =
+      item.amountPaid ??
+      item.amount ??
+      item.deliveryCharge ??
+      item.deliverycharges ??
+      item.total ??
+      item.price ??
+      item.earnings ??
+      item.paidAmount ??
+      item.amount_paid ??
+      item.transactionAmount ??
+      item.value ??
+      0;
     const num = Number(val);
     return isNaN(num) ? 0 : num;
   };
@@ -72,7 +84,7 @@ export default function PendingPaymentsScreen() {
   const formatDate = (item) => {
     if (!item) return 'N/A';
     const rawDate = typeof item === 'object'
-      ? (item.date || item.createdAt || item.timestamp || item.updatedAt || item.paymentDate)
+      ? (item.date || item.createdAt || item.timestamp || item.updatedAt || item.paymentDate || item.created_at)
       : item;
     if (!rawDate) return 'N/A';
     const d = new Date(rawDate);
@@ -117,6 +129,7 @@ export default function PendingPaymentsScreen() {
     pendingData?.totalAmount ??
     pendingData?.deliverycharges ??
     pendingData?.deliveryCharge ??
+    pendingData?.amountPaid ??
     pendingData?.amount ??
     pendingData?.total ??
     null;
@@ -141,7 +154,7 @@ export default function PendingPaymentsScreen() {
           <TouchableOpacity
             style={styles.backButton}
             activeOpacity={0.8}
-            onPress={() => router.back()}
+            onPress={() => router.replace('/settings')}
           >
             <Ionicons name="chevron-back" size={22} color="#000000" />
           </TouchableOpacity>
@@ -400,17 +413,17 @@ const styles = StyleSheet.create({
 
   /* Individual Transaction Card */
   transactionCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#DCD5C7', // Navbar sand/beige background color
     borderRadius: 20,
     padding: 16,
     marginBottom: 14,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.06,
     shadowRadius: 6,
-    elevation: 2,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#EFEFEF',
+    borderColor: '#C4B295',
   },
   txTopRow: {
     flexDirection: 'row',
@@ -431,7 +444,7 @@ const styles = StyleSheet.create({
   txLabel: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#8E8882',
+    color: '#5A5550',
     letterSpacing: 0.8,
     marginBottom: 2,
   },
@@ -447,7 +460,7 @@ const styles = StyleSheet.create({
   },
   txDivider: {
     height: 1,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: '#C4B295',
     marginVertical: 12,
   },
   txBottomRow: {
@@ -459,7 +472,7 @@ const styles = StyleSheet.create({
   pillContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F4F0',
+    backgroundColor: '#FAF9F6',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 14,
@@ -468,7 +481,7 @@ const styles = StyleSheet.create({
   pillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4A4A4A',
+    color: '#2A3037',
   },
   emptyStateContainer: {
     alignItems: 'center',

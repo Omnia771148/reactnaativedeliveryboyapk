@@ -1,15 +1,15 @@
-import { Ionicons, FontAwesome } from '@expo/vector-icons';
-import { Tabs, router } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, AppState, DeviceEventEmitter, StyleSheet, TouchableOpacity, View, Alert, Text, Modal, Pressable, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
-import { registerForFCMAsync, saveFCMTokenToBackend, ensureFCMTokenRegistered } from '@/utils/notifications';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { ensureFCMTokenRegistered, saveFCMTokenToBackend } from '@/utils/notifications';
 import { playOrderSound, stopOrderSoundNative } from '@/utils/soundService';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import { Tabs, router } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, AppState, DeviceEventEmitter, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -44,6 +44,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
   const animatedIndex = useRef(new Animated.Value(state.index)).current;
   const [translateYAnim] = useState(() => new Animated.Value(0));
   const [orderCount, setOrderCount] = useState(0);
+  const [hasLiveOrder, setHasLiveOrder] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -55,7 +56,10 @@ function CustomTabBar({ state, descriptors, navigation }) {
         const userIsActive = storedActive !== 'false';
 
         if (!userIsActive) {
-          if (isMounted) setOrderCount(0);
+          if (isMounted) {
+            setOrderCount(0);
+            setHasLiveOrder(false);
+          }
           DeviceEventEmitter.emit('stopOrderSound');
           return;
         }
@@ -73,7 +77,11 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 }
               }
             }
-          } catch (err) {}
+          } catch (err) { }
+        }
+
+        if (isMounted) {
+          setHasLiveOrder(!!currentActiveOrderId);
         }
 
         const fetchUrl = `${API_URL}/api/acceptedorders`;
@@ -84,8 +92,15 @@ function CustomTabBar({ state, descriptors, navigation }) {
           let activeOrders = storedId
             ? (Array.isArray(data) ? data.filter(order => {
               const notRejected = !order.rejectedBy || !order.rejectedBy.includes(storedId);
-              const isAvailableOrMine = !order.deliveryBoyId || order.deliveryBoyId === storedId;
-              return notRejected && isAvailableOrMine;
+              const isUnassigned =
+                !order.deliveryBoyId &&
+                !order.deliveryBoyName &&
+                !order.deliveryDetails &&
+                order.status !== 'accepted' &&
+                order.status !== 'out_for_delivery' &&
+                order.status !== 'completed' &&
+                order.isAccepted !== true;
+              return notRejected && isUnassigned;
             }) : [])
             : data;
 
@@ -202,8 +217,18 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 canPreventDefault: true,
               });
 
-              if (!isFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name, route.params);
+              if (!event.defaultPrevented) {
+                if (!isFocused) {
+                  navigation.navigate(route.name, route.params);
+                } else if (route.name === 'settings') {
+                  router.replace('/settings');
+                } else if (route.name === 'homepage/index') {
+                  router.replace('/homepage');
+                } else if (route.name === 'orders/index') {
+                  router.replace('/orders');
+                } else if (route.name === 'liveorders/index') {
+                  router.replace('/liveorders');
+                }
               }
             };
 
@@ -258,6 +283,9 @@ function CustomTabBar({ state, descriptors, navigation }) {
                         {orderCount > 99 ? '99+' : orderCount}
                       </Text>
                     </View>
+                  )}
+                  {index === 2 && hasLiveOrder && (
+                    <View style={styles.redDotBadge} />
                   )}
                 </Animated.View>
               </TouchableOpacity>
@@ -327,7 +355,7 @@ export default function Layout() {
                 }
               }
             }
-          } catch (activeErr) {}
+          } catch (activeErr) { }
 
           // Do NOT log out delivery partner while they have a live active order
           if (hasActiveOrder) {
@@ -583,6 +611,10 @@ export default function Layout() {
         />
         <Tabs.Screen
           name="settings"
+          options={{
+            title: 'Settings',
+          }}
+        />
       </Tabs>
 
       {/* Custom Styled Account Blocked / Session Modal matching app theme */}
@@ -711,6 +743,23 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     includeFontPadding: false,
+  },
+  redDotBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#E53935', // Red notification dot for live order
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#E53935',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 3,
+    elevation: 6,
+    zIndex: 10,
   },
   blockContainer: {
     flex: 1,

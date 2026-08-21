@@ -43,12 +43,16 @@ export default function LiveOrdersScreen() {
       order.cookingTime ??
       order.estimatedPreparationTime ??
       order.prepMinutes ??
+      order.prep_minutes ??
+      order.vendorPrepTime ??
+      order.restaurantPrepTime ??
+      order.foodPrepTime ??
       order.timeToPrepare ??
       order.estimatedTime;
 
     if (raw !== undefined && raw !== null && raw !== '') {
       const parsed = typeof raw === 'number' ? raw : parseInt(String(raw).match(/\d+/)?.[0] || '0', 10);
-      if (!isNaN(parsed) && parsed > 0) return parsed;
+      if (!isNaN(parsed)) return parsed;
       return raw;
     }
 
@@ -83,7 +87,7 @@ export default function LiveOrdersScreen() {
     }
 
     if (!targetTime) {
-      if (!rawPrep) {
+      if (rawPrep === null || rawPrep === undefined || rawPrep === '') {
         setRemainingTimeText('');
         setIsTimerOverdue(false);
         return;
@@ -99,7 +103,13 @@ export default function LiveOrdersScreen() {
         }
       }
 
-      if (!prepMinutes || isNaN(prepMinutes)) {
+      if (prepMinutes === 0) {
+        setRemainingTimeText('00:00');
+        setIsTimerOverdue(true);
+        return;
+      }
+
+      if (prepMinutes === null || isNaN(prepMinutes)) {
         setRemainingTimeText(String(rawPrep));
         setIsTimerOverdue(false);
         return;
@@ -173,24 +183,46 @@ export default function LiveOrdersScreen() {
     }
   }, [userid]);
 
-  // Initial load
+  // Initial load and periodic polling every 1 minute (60000ms)
   useEffect(() => {
+    let isMounted = true;
     const loadSessionAndData = async () => {
       try {
         const storedId = await AsyncStorage.getItem('userid');
-        if (storedId) {
+        if (storedId && isMounted) {
           setUserid(storedId);
           await fetchActiveOrder(storedId);
-        } else {
+        } else if (isMounted) {
           setLoading(false);
         }
       } catch (error) {
         console.error('Error loading session:', error);
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
+
     loadSessionAndData();
-  }, [fetchActiveOrder]);
+
+    const interval = setInterval(() => {
+      if (isMounted) {
+        if (userid) {
+          fetchActiveOrder(userid);
+        } else {
+          AsyncStorage.getItem('userid').then((storedId) => {
+            if (storedId && isMounted) {
+              setUserid(storedId);
+              fetchActiveOrder(storedId);
+            }
+          });
+        }
+      }
+    }, 60000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [fetchActiveOrder, userid]);
 
   // Fetch data whenever screen comes into focus
   useEffect(() => {
@@ -757,17 +789,31 @@ export default function LiveOrdersScreen() {
                 {/* PREPARATION TIME BLOCK */}
                 <View style={styles.block}>
                   <Text style={styles.blockLabel}>PREPARATION TIME</Text>
-                  <View style={styles.timerRow}>
-                    <Ionicons name="time-outline" size={24} color={isTimerOverdue ? "#CE3A31" : "#D97706"} />
-                    <Text style={[styles.timerValueText, isTimerOverdue && styles.timerOverdueText]}>
-                      {remainingTimeText || (getPrepTimeVal(activeOrder) ? `${getPrepTimeVal(activeOrder)} mins` : 'N/A')}
-                    </Text>
-                  </View>
-                  {getPrepTimeVal(activeOrder) ? (
-                    <Text style={styles.prepSubtext}>
-                      {isTimerOverdue ? 'Order ready / time completed' : `Estimated Prep: ${getPrepTimeVal(activeOrder)} mins`}
-                    </Text>
-                  ) : null}
+                  {isTimerOverdue || remainingTimeText === '00:00' || getPrepTimeVal(activeOrder) === 0 ? (
+                    <>
+                      <View style={styles.timerRow}>
+                        <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
+                        <Text style={styles.timerReadyText}>Item is ready</Text>
+                      </View>
+                      <Text style={styles.prepReadySubtext}>
+                        Order preparation is completed
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.timerRow}>
+                        <Ionicons name="time-outline" size={24} color="#D97706" />
+                        <Text style={styles.timerValueText}>
+                          {remainingTimeText || (getPrepTimeVal(activeOrder) ? `${getPrepTimeVal(activeOrder)} mins` : 'N/A')}
+                        </Text>
+                      </View>
+                      {getPrepTimeVal(activeOrder) ? (
+                        <Text style={styles.prepSubtext}>
+                          {`Estimated Prep: ${getPrepTimeVal(activeOrder)} mins`}
+                        </Text>
+                      ) : null}
+                    </>
+                  )}
                 </View>
 
                 {/* DELIVERY FEE BLOCK */}
@@ -1031,10 +1077,23 @@ const styles = StyleSheet.create({
   timerOverdueText: {
     color: '#CE3A31',
   },
+  timerReadyText: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#2E7D32', // Emerald green
+    letterSpacing: 0.5,
+  },
   prepSubtext: {
     fontSize: 12,
     fontWeight: '600',
     color: '#8E8882',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  prepReadySubtext: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2E7D32',
     marginTop: 2,
     textAlign: 'center',
   },

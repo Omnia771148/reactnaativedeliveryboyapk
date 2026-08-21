@@ -79,7 +79,7 @@ export default function ContactScreen() {
             <TouchableOpacity 
               style={styles.backButton} 
               activeOpacity={0.8}
-              onPress={() => router.back()}
+              onPress={() => router.replace('/settings')}
             >
               <Ionicons name="arrow-back" size={20} color="#000000" />
             </TouchableOpacity>
@@ -106,6 +106,18 @@ export default function ContactScreen() {
                 <Ionicons name="call" size={22} color="#000000" />
               </View>
               <Text style={styles.valueText}>+91 7207610235</Text>
+            </TouchableOpacity>
+
+            {/* WhatsApp */}
+            <TouchableOpacity 
+              style={styles.detailItem} 
+              activeOpacity={0.85}
+              onPress={() => openAppOrWeb('whatsapp://send?phone=917207610235', 'https://wa.me/917207610235')}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="logo-whatsapp" size={22} color="#25D366" />
+              </View>
+              <Text style={styles.valueText}>WhatsApp</Text>
             </TouchableOpacity>
 
             {/* Email */}
