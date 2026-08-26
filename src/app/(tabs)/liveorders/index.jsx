@@ -5,8 +5,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+
+
 
 export default function LiveOrdersScreen() {
   const navigation = useNavigation();
@@ -27,6 +30,99 @@ export default function LiveOrdersScreen() {
 
   // Pickup confirmation modal state
   const [pickupModalVisible, setPickupModalVisible] = useState(false);
+
+  // Doorstep Dynamic Cashfree QR States
+  const [qrModalVisible, setQrModalVisible] = useState(false);
+
+
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [qrPaymentPaid, setQrPaymentPaid] = useState(false);
+  const pollingTimerRef = useRef(null);
+
+  const stopPaymentPolling = useCallback(() => {
+    if (pollingTimerRef.current) {
+      clearInterval(pollingTimerRef.current);
+      pollingTimerRef.current = null;
+    }
+  }, []);
+
+  const checkPaymentStatus = useCallback(async (orderIdKey) => {
+    if (!orderIdKey) return;
+    try {
+      const response = await fetch(`${API_URL}/api/payment/verify-doorstep-pay/${orderIdKey}`);
+      const rawText = await response.text();
+      let data = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch (_e) {}
+
+      if (response.ok && (data.isPaid || String(data.paymentStatus).toLowerCase() === 'paid')) {
+        setQrPaymentPaid(true);
+        setActiveOrder((prev) => (prev ? { ...prev, paymentStatus: 'Paid' } : prev));
+        stopPaymentPolling();
+      }
+    } catch (_err) {
+      console.error('[Polling] Error checking doorstep payment status:', _err);
+    }
+  }, [stopPaymentPolling]);
+
+  const startPaymentPolling = useCallback((orderIdKey) => {
+    stopPaymentPolling();
+    pollingTimerRef.current = setInterval(() => {
+      checkPaymentStatus(orderIdKey);
+    }, 3000);
+  }, [checkPaymentStatus, stopPaymentPolling]);
+
+  const handleShowPaymentQR = async () => {
+    if (!activeOrder) return;
+    const targetOrderId = activeOrder.razorpayOrderId || activeOrder.orderId || activeOrder._id;
+    setQrModalVisible(true);
+    setQrLoading(true);
+    setQrPaymentPaid(false);
+
+    try {
+      const response = await fetch(`${API_URL}/api/payment/generate-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: targetOrderId }),
+      });
+
+      const rawText = await response.text();
+      let data = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch (_e) {
+        data = { message: `Server returned non-JSON response (Status: ${response.status}). Please ensure backend is running.` };
+      }
+
+      if (response.ok && data.success) {
+        setQrData(data);
+        startPaymentPolling(targetOrderId);
+      } else {
+        Alert.alert('QR Code Error', data.message || 'Failed to generate Payment QR Code.');
+        setQrModalVisible(false);
+      }
+    } catch (err) {
+      console.error('[Generate QR] Error:', err);
+      Alert.alert('Network Error', 'Failed to generate payment QR code. Please check backend.');
+      setQrModalVisible(false);
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  const handleCloseQrModal = () => {
+    stopPaymentPolling();
+    setQrModalVisible(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopPaymentPolling();
+    };
+  }, [stopPaymentPolling]);
+
   const [isLocallyPickedUp, setIsLocallyPickedUp] = useState(false);
 
   // Preparation time & live countdown timer state
@@ -283,7 +379,7 @@ export default function LiveOrdersScreen() {
       if (typeof src === 'string') {
         try {
           src = JSON.parse(src);
-        } catch (e) {
+        } catch (_e) {
           continue;
         }
       }
@@ -367,7 +463,7 @@ export default function LiveOrdersScreen() {
         const parsed = JSON.parse(activeOrder.userCoordinates);
         lat = parsed.lat;
         lng = parsed.lng;
-      } catch (e) { }
+      } catch (_e) { }
     }
 
     // Fallbacks for location object or root lat/lng
@@ -716,6 +812,56 @@ export default function LiveOrdersScreen() {
                   </View>
                 </View>
 
+                
+                {/* PREPAID ORDER BADGE */}
+                {(activeOrder.paymentMethod !== 'COD' && (activeOrder.paymentStatus === 'Paid' || String(activeOrder.paymentStatus).toLowerCase() === 'paid')) && (
+                  <View style={styles.block}>
+                    <View style={styles.paidSuccessCard}>
+                      <Ionicons name="checkmark-circle" size={24} color="#2E7D32" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.paidSuccessTitle}>Prepaid Order (Paid Online)</Text>
+                        <Text style={styles.paidSuccessSubtext}>Payment completed online. Ask customer for 5-digit OTP below.</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* DOORSTEP PAYMENT CARD (FOR COD ORDERS) */}
+                {(activeOrder.paymentMethod === 'COD' || activeOrder.paymentStatus !== 'Paid') && (
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>DOORSTEP PAYMENT (COD)</Text>
+                    
+                    {activeOrder.paymentStatus === 'Paid' || qrPaymentPaid ? (
+                      <View style={styles.paidSuccessCard}>
+                        <Ionicons name="checkmark-circle" size={24} color="#2E7D32" />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.paidSuccessTitle}>Payment Received via Razorpay QR</Text>
+                          <Text style={styles.paidSuccessSubtext}>Order status is Paid. Please ask customer for 5-digit OTP below.</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.pendingPaymentCard}>
+                        <View style={styles.pendingHeaderRow}>
+                          <Ionicons name="alert-circle" size={22} color="#E65100" />
+                          <Text style={styles.pendingTitle}>Payment Pending: ₹{activeOrder.grandTotal || activeOrder.totalPrice || 0}</Text>
+                        </View>
+                        <Text style={styles.pendingNoticeText}>
+                          Customer must pay via Razorpay Dynamic QR Code at doorstep. Cash collection is disabled.
+                        </Text>
+                        
+                        <TouchableOpacity
+                          style={styles.showQrButton}
+                          activeOpacity={0.88}
+                          onPress={handleShowPaymentQR}
+                        >
+                          <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
+                          <Text style={styles.showQrButtonText}>SHOW PAYMENT QR CODE</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 {/* CUSTOMER OTP BLOCK */}
                 <View style={styles.block}>
                   <Text style={styles.otpSectionTitle}>Customer OTP</Text>
@@ -875,7 +1021,82 @@ export default function LiveOrdersScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </SafeAreaView>
+      
+      {/* PAYMENT DYNAMIC QR MODAL */}
+      <Modal
+        visible={qrModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCloseQrModal}
+      >
+        <View style={styles.qrModalOverlay}>
+          <View style={[styles.qrModalCard, { maxWidth: 440 }]}>
+            <View style={styles.qrModalHeader}>
+              <Text style={styles.qrModalTitle}>Razorpay Dynamic QR Code</Text>
+              <TouchableOpacity onPress={handleCloseQrModal} style={styles.qrCloseBtn}>
+                <Ionicons name="close" size={22} color="#666666" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.qrModalBody}>
+              {qrLoading ? (
+                <View style={styles.qrLoadingBox}>
+                  <ActivityIndicator size="large" color="#2E7D32" />
+                  <Text style={styles.qrLoadingText}>Generating Razorpay Payment QR Code...</Text>
+                </View>
+              ) : qrPaymentPaid ? (
+                <View style={styles.qrSuccessBox}>
+                  <Ionicons name="checkmark-circle" size={64} color="#2E7D32" />
+                  <Text style={styles.qrSuccessTitle}>Payment Received!</Text>
+                  <Text style={styles.qrSuccessSubtext}>
+                    Payment of ₹{qrData?.amount || activeOrder?.grandTotal || 0} confirmed by Razorpay.
+                  </Text>
+                  <Text style={styles.qrOtpPrompt}>
+                    Customer app now displays the 5-digit Delivery OTP. Please enter the OTP to complete delivery.
+                  </Text>
+                  <TouchableOpacity style={styles.qrDoneButton} onPress={handleCloseQrModal}>
+                    <Text style={styles.qrDoneButtonText}>ENTER OTP NOW</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : qrData ? (
+                <View style={styles.qrDisplayBox}>
+                  <Text style={styles.qrAmountLabel}>Collect Amount</Text>
+                  <Text style={styles.qrAmountValue}>₹{qrData.amount}</Text>
+
+                  {qrData.qrCodeUrl ? (
+                    <View style={styles.qrImageWrapper}>
+                      {Platform.OS === 'web' ? (
+                        <img
+                          src={qrData.qrCodeUrl}
+                          alt="Razorpay Dynamic QR Code"
+                          style={{ width: '100%', maxWidth: 320, height: 440, objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <Image
+                          source={{ uri: qrData.qrCodeUrl }}
+                          style={{ width: '100%', maxWidth: 320, height: 440 }}
+                          resizeMode="contain"
+                        />
+                      )}
+                    </View>
+                  ) : null}
+
+                  <Text style={styles.qrScanInstructions}>
+                    Ask customer to scan with GPay, PhonePe, Paytm, or BHIM UPI
+                  </Text>
+
+                  <View style={styles.pollingStatusRow}>
+                    <ActivityIndicator size="small" color="#2E7D32" />
+                    <Text style={styles.pollingStatusText}>Waiting for payment completion...</Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+    </SafeAreaView>
 
       {/* PICKUP CONFIRMATION CUSTOM MODAL */}
       <Modal
@@ -1489,5 +1710,134 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+  },
+
+  // Dynamic Razorpay QR Modal Styles
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  qrModalCard: {
+    width: '92%',
+    maxWidth: 420,
+    maxHeight: '90%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    paddingBottom: 10,
+  },
+  qrModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#2A3037',
+  },
+  qrCloseBtn: {
+    padding: 4,
+  },
+  qrModalBody: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  qrLoadingBox: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    gap: 12,
+  },
+  qrLoadingText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2E7D32',
+  },
+  qrSuccessBox: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    gap: 10,
+  },
+  qrSuccessTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#2E7D32',
+  },
+  qrSuccessSubtext: {
+    fontSize: 14,
+    color: '#555555',
+    textAlign: 'center',
+  },
+  qrOtpPrompt: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8E8882',
+    textAlign: 'center',
+  },
+  qrDoneButton: {
+    backgroundColor: '#2E7D32',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  qrDoneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  qrDisplayBox: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  qrAmountLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8E8882',
+    letterSpacing: 1,
+  },
+  qrAmountValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#2E7D32',
+    marginVertical: 2,
+  },
+  qrImageWrapper: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+  },
+  qrScanInstructions: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555555',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  pollingStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  pollingStatusText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2E7D32',
   },
 });
