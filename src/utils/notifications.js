@@ -1,7 +1,20 @@
 import { Platform, PermissionsAndroid, Linking } from 'react-native';
 import { API_URL } from '@/constants/api';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import * as Notifications from 'expo-notifications';
+
+export const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+export function getExpoNotifications() {
+  if (isExpoGo && Platform.OS === 'android') {
+    return null;
+  }
+  try {
+    return require('expo-notifications');
+  } catch (e) {
+    console.warn('Failed to load expo-notifications module:', e);
+    return null;
+  }
+}
 
 export function openNotificationSettings() {
   if (Platform.OS === 'web') return;
@@ -11,8 +24,6 @@ export function openNotificationSettings() {
     console.error('Error opening settings:', err);
   }
 }
-
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 function getMessaging() {
   if (isExpoGo) return null;
@@ -28,12 +39,17 @@ export async function requestNotificationPermission() {
   if (Platform.OS === 'web') return false;
 
   try {
-    // 1. Expo Notifications Permission Request
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
+    let finalStatus = 'granted';
+    const Notifications = getExpoNotifications();
+
+    // 1. Expo Notifications Permission Request (if available)
+    if (Notifications) {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
     }
 
     // 2. Android 13+ POST_NOTIFICATIONS Permission Request
@@ -119,7 +135,8 @@ export async function registerForFCMAsync(forceRefresh = false) {
     }
 
     // Strategy 2: Fallback to Expo Notifications getDevicePushTokenAsync()
-    if (!token) {
+    const Notifications = getExpoNotifications();
+    if (!token && Notifications) {
       try {
         const deviceTokenRes = await Notifications.getDevicePushTokenAsync();
         if (deviceTokenRes && deviceTokenRes.data) {
@@ -132,7 +149,7 @@ export async function registerForFCMAsync(forceRefresh = false) {
     }
 
     if (!token) {
-      console.error('Failed to retrieve any FCM push token from device');
+      console.warn('Could not retrieve valid FCM push token from device (may be running in Expo Go)');
     }
 
     return token;

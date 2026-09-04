@@ -5,9 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
 
 
 
@@ -39,6 +38,8 @@ export default function LiveOrdersScreen() {
   const [qrData, setQrData] = useState(null);
   const [qrPaymentPaid, setQrPaymentPaid] = useState(false);
   const pollingTimerRef = useRef(null);
+  const mainScrollViewRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
 
   const stopPaymentPolling = useCallback(() => {
     if (pollingTimerRef.current) {
@@ -55,7 +56,7 @@ export default function LiveOrdersScreen() {
       let data = {};
       try {
         data = JSON.parse(rawText);
-      } catch (_e) {}
+      } catch (_e) { }
 
       if (response.ok && (data.isPaid || String(data.paymentStatus).toLowerCase() === 'paid')) {
         setQrPaymentPaid(true);
@@ -115,6 +116,12 @@ export default function LiveOrdersScreen() {
   const handleCloseQrModal = () => {
     stopPaymentPolling();
     setQrModalVisible(false);
+    setTimeout(() => {
+      mainScrollViewRef.current?.scrollToEnd({ animated: true });
+      if (inputRefs[0]?.current) {
+        inputRefs[0].current.focus();
+      }
+    }, 300);
   };
 
   useEffect(() => {
@@ -122,6 +129,30 @@ export default function LiveOrdersScreen() {
       stopPaymentPolling();
     };
   }, [stopPaymentPolling]);
+
+  useEffect(() => {
+    const onShow = (e) => {
+      if (e && e.endCoordinates) {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+      setTimeout(() => {
+        mainScrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 60);
+    };
+    const onHide = () => {
+      setKeyboardHeight(0);
+    };
+    const showSub = Keyboard.addListener('keyboardDidShow', onShow);
+    const hideSub = Keyboard.addListener('keyboardDidHide', onHide);
+    const willShowSub = Platform.OS === 'ios' ? Keyboard.addListener('keyboardWillShow', onShow) : null;
+    const willHideSub = Platform.OS === 'ios' ? Keyboard.addListener('keyboardWillHide', onHide) : null;
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+      willShowSub?.remove();
+      willHideSub?.remove();
+    };
+  }, []);
 
   const [isLocallyPickedUp, setIsLocallyPickedUp] = useState(false);
 
@@ -256,14 +287,19 @@ export default function LiveOrdersScreen() {
         }
         if (data) {
           setActiveOrder(data);
-          const orderKey = data._id || data.orderId || data.id;
-          if (orderKey) {
+          const keysToCheck = [data._id, data.orderId, data.id].filter(Boolean);
+          let isPicked = false;
+          for (const key of keysToCheck) {
             try {
-              const savedPickedState = await AsyncStorage.getItem(`pickedup_${orderKey}`);
+              const savedPickedState = await AsyncStorage.getItem(`pickedup_${key}`);
               if (savedPickedState === 'true') {
-                setIsLocallyPickedUp(true);
+                isPicked = true;
+                break;
               }
-            } catch (_e) {}
+            } catch (_e) { }
+          }
+          if (isPicked) {
+            setIsLocallyPickedUp(true);
           }
         }
       } else if (response.status === 404) {
@@ -527,9 +563,9 @@ export default function LiveOrdersScreen() {
             try {
               const altText = await altResponse.text();
               data = JSON.parse(altText);
-            } catch (_e) {}
+            } catch (_e) { }
           }
-        } catch (_altErr) {}
+        } catch (_altErr) { }
       }
 
       // Fallback endpoint if needed
@@ -545,9 +581,9 @@ export default function LiveOrdersScreen() {
             try {
               const altText = await altResponse.text();
               data = JSON.parse(altText);
-            } catch (_e) {}
+            } catch (_e) { }
           }
-        } catch (_altErr) {}
+        } catch (_altErr) { }
       }
 
       const msg = (data.message || '').toLowerCase();
@@ -558,7 +594,7 @@ export default function LiveOrdersScreen() {
         if (orderKey) {
           try {
             await AsyncStorage.setItem(`pickedup_${orderKey}`, 'true');
-          } catch (_e) {}
+          } catch (_e) { }
         }
         setIsLocallyPickedUp(true);
         // Refresh local state to render OTP input layout
@@ -588,6 +624,20 @@ export default function LiveOrdersScreen() {
     // Alphanumeric filters for OTP inputs
     const cleanText = text.replace(/[^a-zA-Z0-9]/g, '');
     const newOtp = [...otp];
+
+    if (cleanText.length > 1) {
+      // Handle paste or auto-fill of multi-character OTP string
+      const chars = cleanText.slice(0, 5).split('');
+      for (let i = 0; i < 5; i++) {
+        newOtp[i] = chars[i] || '';
+      }
+      setOtp(newOtp);
+      const nextFocus = Math.min(chars.length, 4);
+      if (inputRefs[nextFocus]?.current) {
+        inputRefs[nextFocus].current.focus();
+      }
+      return;
+    }
 
     if (cleanText === '') {
       newOtp[index] = '';
@@ -624,6 +674,16 @@ export default function LiveOrdersScreen() {
         }
       }
     }
+  };
+
+  const handleOtpFocus = (index) => {
+    setFocusedIndex(index);
+    setTimeout(() => {
+      mainScrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    setTimeout(() => {
+      mainScrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 350);
   };
 
   const handleCompleteOrder = async () => {
@@ -670,9 +730,9 @@ export default function LiveOrdersScreen() {
             try {
               const altText = await altResponse.text();
               data = JSON.parse(altText);
-            } catch (_e) {}
+            } catch (_e) { }
           }
-        } catch (_altErr) {}
+        } catch (_altErr) { }
       }
 
       if (response.ok) {
@@ -680,7 +740,7 @@ export default function LiveOrdersScreen() {
         if (orderKey) {
           try {
             await AsyncStorage.removeItem(`pickedup_${orderKey}`);
-          } catch (_e) {}
+          } catch (_e) { }
         }
         setIsLocallyPickedUp(false);
         setModalType('success');
@@ -708,7 +768,7 @@ export default function LiveOrdersScreen() {
       if (orderKey) {
         try {
           await AsyncStorage.removeItem(`pickedup_${orderKey}`);
-        } catch (_e) {}
+        } catch (_e) { }
       }
       setIsLocallyPickedUp(false);
       setOtp(['', '', '', '', '']); // Clear input
@@ -744,6 +804,35 @@ export default function LiveOrdersScreen() {
     activeOrder?.is_picked_up === true ||
     activeOrder?.picked_up === true;
 
+  const payMethodUpper = String(activeOrder?.paymentMethod || activeOrder?.payment_method || '').toUpperCase().trim();
+  const payStatusLower = String(
+    activeOrder?.paymentStatus || 
+    activeOrder?.payment_status || 
+    activeOrder?.payment?.status || 
+    ''
+  ).toLowerCase().trim();
+  const isPaidStatus = 
+    payStatusLower === 'paid' || 
+    payStatusLower === 'success' || 
+    payStatusLower === 'completed' || 
+    activeOrder?.isPaid === true || 
+    activeOrder?.is_paid === true || 
+    qrPaymentPaid;
+  const isCodMethod = payMethodUpper === 'COD' || payMethodUpper === 'CASH' || payMethodUpper === 'CASH_ON_DELIVERY' || payMethodUpper === '';
+
+  // Auto scroll and focus OTP input when payment completes
+  useEffect(() => {
+    if (isPaidStatus && isOutForDelivery) {
+      const timer = setTimeout(() => {
+        mainScrollViewRef.current?.scrollToEnd({ animated: true });
+        if (inputRefs[0]?.current) {
+          inputRefs[0].current.focus();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isPaidStatus, isOutForDelivery]);
+
   if (loading) {
     return <LoadingOverlay visible={true} />;
   }
@@ -754,349 +843,417 @@ export default function LiveOrdersScreen() {
         {/* Custom Header Bar */}
         <BrandHeader />
 
-        {activeOrder ? (
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {isOutForDelivery ? (
-              // Phase 2: Customer Details & OTP Verification UI (Out for Delivery state)
-              <View style={styles.mainCard}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+        >
+          {activeOrder ? (
+            <ScrollView
+              ref={mainScrollViewRef}
+              contentContainerStyle={[
+                styles.scrollContent,
+                { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 24 }
+              ]}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+              keyboardDismissMode="on-drag"
+            >
+              {isOutForDelivery ? (
+                // Phase 2: Customer Details & OTP Verification UI (Out for Delivery state)
+                <View style={styles.mainCard}>
 
-                {/* CUSTOMER DETAILS BLOCK */}
-                <View style={[styles.block, styles.detailsBlock]}>
-                  <Text style={styles.blockLabel}>Customer Details</Text>
+                  {/* CUSTOMER DETAILS BLOCK */}
+                  <View style={[styles.block, styles.detailsBlock]}>
+                    <Text style={styles.blockLabel}>Customer Details</Text>
 
-                  <View style={styles.detailTextRow}>
-                    <Text style={styles.detailTextLabel}>Order ID:</Text>
-                    <Text style={styles.detailTextVal}>{activeOrder.orderId || 'N/A'}</Text>
-                  </View>
+                    <View style={styles.detailTextRow}>
+                      <Text style={styles.detailTextLabel}>Order ID:</Text>
+                      <Text style={styles.detailTextVal}>{activeOrder.orderId || 'N/A'}</Text>
+                    </View>
 
-                  <View style={styles.detailTextRow}>
-                    <Text style={styles.detailTextLabel}>Name:</Text>
-                    <Text style={styles.detailTextVal}>{activeOrder.userName || 'N/A'}</Text>
-                  </View>
+                    <View style={styles.detailTextRow}>
+                      <Text style={styles.detailTextLabel}>Name:</Text>
+                      <Text style={styles.detailTextVal}>{activeOrder.userName || 'N/A'}</Text>
+                    </View>
 
-                  <View style={styles.detailTextRow}>
-                    <Text style={styles.detailTextLabel}>Phone:</Text>
-                    <TouchableOpacity
-                      style={styles.phonePillButton}
-                      activeOpacity={0.8}
-                      onPress={() => Linking.openURL(`tel:${activeOrder.userPhone}`)}
-                    >
-                      <Ionicons name="call" size={14} color="#FFFFFF" style={styles.phoneIcon} />
-                      <Text style={styles.phonePillText}>{activeOrder.userPhone || 'N/A'}</Text>
-                    </TouchableOpacity>
-                  </View>
+                    <View style={styles.detailTextRow}>
+                      <Text style={styles.detailTextLabel}>Phone:</Text>
+                      <TouchableOpacity
+                        style={styles.phonePillButton}
+                        activeOpacity={0.8}
+                        onPress={() => Linking.openURL(`tel:${activeOrder.userPhone}`)}
+                      >
+                        <Ionicons name="call" size={14} color="#FFFFFF" style={styles.phoneIcon} />
+                        <Text style={styles.phonePillText}>{activeOrder.userPhone || 'N/A'}</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                  <View style={styles.detailTextRow}>
-                    <Text style={styles.detailTextLabel}>Address:</Text>
-                    <Text style={styles.detailTextVal}>
-                      {activeOrder.flatNo ? `${activeOrder.flatNo}, ` : ''}
-                      {activeOrder.street ? `${activeOrder.street}, ` : ''}
-                      {activeOrder.landmark ? `${activeOrder.landmark}\n` : ''}
-                      {activeOrder.deliveryAddress || 'N/A'}
-                    </Text>
-                  </View>
+                    <View style={styles.detailTextRow}>
+                      <Text style={styles.detailTextLabel}>Address:</Text>
+                      <Text style={styles.detailTextVal}>
+                        {activeOrder.flatNo ? `${activeOrder.flatNo}, ` : ''}
+                        {activeOrder.street ? `${activeOrder.street}, ` : ''}
+                        {activeOrder.landmark ? `${activeOrder.landmark}\n` : ''}
+                        {activeOrder.deliveryAddress || 'N/A'}
+                      </Text>
+                    </View>
 
-                  <View style={styles.detailTextRow}>
-                    <Text style={styles.detailTextLabel}>Location:</Text>
-                    <TouchableOpacity
-                      style={styles.locationPillButton}
-                      activeOpacity={0.8}
-                      onPress={handleOpenCustomerMap}
-                    >
-                      <Ionicons name="location" size={14} color="#FFFFFF" />
-                      <Text style={styles.locationPillText}>VIEW IN MAP</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                
-                {/* PREPAID ORDER BADGE */}
-                {(activeOrder.paymentMethod !== 'COD' && (activeOrder.paymentStatus === 'Paid' || String(activeOrder.paymentStatus).toLowerCase() === 'paid')) && (
-                  <View style={styles.block}>
-                    <View style={styles.paidSuccessCard}>
-                      <Ionicons name="checkmark-circle" size={24} color="#2E7D32" />
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.paidSuccessTitle}>Prepaid Order (Paid Online)</Text>
-                        <Text style={styles.paidSuccessSubtext}>Payment completed online. Ask customer for 5-digit OTP below.</Text>
-                      </View>
+                    <View style={styles.detailTextRow}>
+                      <Text style={styles.detailTextLabel}>Location:</Text>
+                      <TouchableOpacity
+                        style={styles.locationPillButton}
+                        activeOpacity={0.8}
+                        onPress={handleOpenCustomerMap}
+                      >
+                        <Ionicons name="location" size={14} color="#FFFFFF" />
+                        <Text style={styles.locationPillText}>VIEW IN MAP</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
-                )}
 
-                {/* DOORSTEP PAYMENT CARD (FOR COD ORDERS) */}
-                {(activeOrder.paymentMethod === 'COD' || activeOrder.paymentStatus !== 'Paid') && (
-                  <View style={styles.block}>
-                    <Text style={styles.blockLabel}>DOORSTEP PAYMENT (COD)</Text>
-                    
-                    {activeOrder.paymentStatus === 'Paid' || qrPaymentPaid ? (
+
+                  {/* PREPAID ORDER BADGE */}
+                  {(!isCodMethod && isPaidStatus) && (
+                    <View style={styles.block}>
                       <View style={styles.paidSuccessCard}>
-                        <Ionicons name="checkmark-circle" size={24} color="#2E7D32" />
+                        <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.paidSuccessTitle}>Payment Received via Razorpay QR</Text>
-                          <Text style={styles.paidSuccessSubtext}>Order status is Paid. Please ask customer for 5-digit OTP below.</Text>
+                          <Text style={styles.paidSuccessTitle}>Prepaid Order (Paid Online)</Text>
+                          <Text style={styles.paidSuccessSubtext}>Payment completed online. Ask customer for 5-digit OTP below.</Text>
                         </View>
                       </View>
-                    ) : (
-                      <View style={styles.pendingPaymentCard}>
-                        <View style={styles.pendingHeaderRow}>
-                          <Ionicons name="alert-circle" size={22} color="#E65100" />
-                          <Text style={styles.pendingTitle}>Payment Pending: ₹{activeOrder.grandTotal || activeOrder.totalPrice || 0}</Text>
-                        </View>
-                        <Text style={styles.pendingNoticeText}>
-                          Customer must pay via Razorpay Dynamic QR Code at doorstep. Cash collection is disabled.
-                        </Text>
+
+                      {/* OTP INPUT SECTION DIRECTLY INSIDE THIS CARD */}
+                      <View style={styles.otpSectionContainer}>
+                        <Text style={styles.otpSectionTitle}>Customer OTP</Text>
                         
+                        <View style={styles.otpRow}>
+                          {otp.map((digit, index) => (
+                            <TextInput
+                              key={index}
+                              ref={inputRefs[index]}
+                              style={[
+                                styles.otpInput,
+                                focusedIndex === index && styles.otpInputFocused
+                              ]}
+                              maxLength={1}
+                              value={digit}
+                              onChangeText={(text) => handleOtpChange(text, index)}
+                              onKeyPress={(e) => handleKeyPress(e, index)}
+                              onFocus={() => handleOtpFocus(index)}
+                              onBlur={() => setFocusedIndex(null)}
+                              placeholder=""
+                              keyboardType="number-pad"
+                              inputMode="numeric"
+                              textContentType="oneTimeCode"
+                              autoComplete="sms-otp"
+                              autoCapitalize="none"
+                              autoCorrect={false}
+                              selectTextOnFocus
+                            />
+                          ))}
+                        </View>
+
                         <TouchableOpacity
-                          style={styles.showQrButton}
-                          activeOpacity={0.88}
-                          onPress={handleShowPaymentQR}
+                          style={[
+                            styles.completeButton,
+                            (otp.join('').length < 5 || updating) && styles.disabledCompleteButton
+                          ]}
+                          activeOpacity={0.9}
+                          onPress={handleCompleteOrder}
+                          disabled={otp.join('').length < 5 || updating}
                         >
-                          <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
-                          <Text style={styles.showQrButtonText}>SHOW PAYMENT QR CODE</Text>
+                          {updating ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.completeButtonText}>COMPLETE</Text>
+                          )}
                         </TouchableOpacity>
                       </View>
+                    </View>
+                  )}
+
+                  {/* DOORSTEP PAYMENT CARD (FOR COD ORDERS OR UNPAID ORDERS) */}
+                  {(isCodMethod || !isPaidStatus) && (
+                    <View style={styles.block}>
+                      <Text style={styles.blockLabel}>DOORSTEP PAYMENT (COD)</Text>
+
+                      {isPaidStatus ? (
+                        <View style={{ width: '100%', alignItems: 'center' }}>
+                          <View style={styles.paidSuccessCard}>
+                            <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.paidSuccessTitle}>Payment Received via Razorpay QR</Text>
+                              <Text style={styles.paidSuccessSubtext}>Order status is Paid. Please ask customer for 5-digit OTP below.</Text>
+                            </View>
+                          </View>
+
+                          {/* OTP INPUT SECTION DIRECTLY INSIDE THIS CARD RIGHT BELOW */}
+                          <View style={styles.otpSectionContainer}>
+                            <Text style={styles.otpSectionTitle}>Customer OTP</Text>
+                            
+                            <View style={styles.otpRow}>
+                              {otp.map((digit, index) => (
+                                <TextInput
+                                  key={index}
+                                  ref={inputRefs[index]}
+                                  style={[
+                                    styles.otpInput,
+                                    focusedIndex === index && styles.otpInputFocused
+                                  ]}
+                                  maxLength={1}
+                                  value={digit}
+                                  onChangeText={(text) => handleOtpChange(text, index)}
+                                  onKeyPress={(e) => handleKeyPress(e, index)}
+                                  onFocus={() => handleOtpFocus(index)}
+                                  onBlur={() => setFocusedIndex(null)}
+                                  placeholder=""
+                                  keyboardType="number-pad"
+                                  inputMode="numeric"
+                                  textContentType="oneTimeCode"
+                                  autoComplete="sms-otp"
+                                  autoCapitalize="none"
+                                  autoCorrect={false}
+                                  selectTextOnFocus
+                                />
+                              ))}
+                            </View>
+
+                            <TouchableOpacity
+                              style={[
+                                styles.completeButton,
+                                (otp.join('').length < 5 || updating) && styles.disabledCompleteButton
+                              ]}
+                              activeOpacity={0.9}
+                              onPress={handleCompleteOrder}
+                              disabled={otp.join('').length < 5 || updating}
+                            >
+                              {updating ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                              ) : (
+                                <Text style={styles.completeButtonText}>COMPLETE</Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.pendingPaymentCard}>
+                          <View style={styles.pendingHeaderRow}>
+                            <Ionicons name="alert-circle" size={22} color="#E65100" />
+                            <Text style={styles.pendingTitle}>Payment Pending: ₹{activeOrder.grandTotal || activeOrder.totalPrice || 0}</Text>
+                          </View>
+                          <Text style={styles.pendingNoticeText}>
+                            Customer must pay via Razorpay Dynamic QR Code at doorstep. Cash collection is disabled.
+                          </Text>
+
+                          <TouchableOpacity
+                            style={styles.showQrButton}
+                            activeOpacity={0.88}
+                            onPress={handleShowPaymentQR}
+                          >
+                            <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
+                            <Text style={styles.showQrButtonText}>SHOW PAYMENT QR CODE</Text>
+                          </TouchableOpacity>
+
+                          <Text style={styles.otpNoticeText}>After payment successful enter OTP</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                </View>
+              ) : (
+                // Phase 1: Order Acceptance / Pickup details screen
+                <View style={styles.mainCard}>
+                  {/* ORDER ID BLOCK */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>ORDER ID</Text>
+                    <Text style={styles.orderIdText}>{activeOrder.orderId || 'N/A'}</Text>
+                  </View>
+
+                  {/* RESTAURANT BLOCK */}
+                  <View style={styles.block}>
+                    <Text style={styles.restaurantNameText}>
+                      {activeOrder.restaurantName?.toUpperCase() || 'N/A'}
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.mapButton}
+                      activeOpacity={0.8}
+                      onPress={handleOpenMap}
+                    >
+                      <Ionicons name="location" size={14} color="#FFFFFF" />
+                      <Text style={styles.mapButtonText}>VIEW IN MAP</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* PREPARATION TIME BLOCK */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>PREPARATION TIME</Text>
+                    {isTimerOverdue || remainingTimeText === '00:00' || getPrepTimeVal(activeOrder) === 0 ? (
+                      <>
+                        <View style={styles.timerRow}>
+                          <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
+                          <Text style={styles.timerReadyText}>Item is ready</Text>
+                        </View>
+                        <Text style={styles.prepReadySubtext}>
+                          Order preparation is completed
+                        </Text>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.timerRow}>
+                          <Ionicons name="time-outline" size={24} color="#D97706" />
+                          <Text style={styles.timerValueText}>
+                            {remainingTimeText || (getPrepTimeVal(activeOrder) ? `${getPrepTimeVal(activeOrder)} mins` : 'N/A')}
+                          </Text>
+                        </View>
+                        {getPrepTimeVal(activeOrder) ? (
+                          <Text style={styles.prepSubtext}>
+                            {`Estimated Prep: ${getPrepTimeVal(activeOrder)} mins`}
+                          </Text>
+                        ) : null}
+                      </>
                     )}
                   </View>
-                )}
 
-                {/* CUSTOMER OTP BLOCK */}
-                <View style={styles.block}>
-                  <Text style={styles.otpSectionTitle}>Customer OTP</Text>
+                  {/* DELIVERY FEE BLOCK */}
+                  <View style={styles.block}>
+                    <Text style={styles.blockLabel}>DELIVERY FEE</Text>
+                    <Text style={styles.feeText}>₹{activeOrder.deliveryFee ?? activeOrder.deliveryCharge ?? 0}</Text>
+                  </View>
 
-                  <View style={styles.otpRow}>
-                    {otp.map((digit, index) => (
-                      <TextInput
-                        key={index}
-                        ref={inputRefs[index]}
-                        style={[
-                          styles.otpInput,
-                          focusedIndex === index && styles.otpInputFocused
-                        ]}
-                        maxLength={1}
-                        value={digit}
-                        onChangeText={(text) => handleOtpChange(text, index)}
-                        onKeyPress={(e) => handleKeyPress(e, index)}
-                        onFocus={() => setFocusedIndex(index)}
-                        onBlur={() => setFocusedIndex(null)}
-                        placeholder=""
-                        keyboardType="default"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        selectTextOnFocus
-                      />
+                  {/* ITEMS TO PICKUP BLOCK */}
+                  <View style={[styles.block, styles.itemsBlock]}>
+                    <Text style={styles.itemsLabel}>ITEMS TO PICKUP</Text>
+                    <View style={styles.divider} />
+                    {activeOrder.items && activeOrder.items.map((item, idx) => (
+                      <View key={item._id || idx} style={styles.itemRow}>
+                        <Text style={styles.itemName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.itemQty}>
+                          x{item.quantity || 1}
+                        </Text>
+                      </View>
                     ))}
                   </View>
 
+                  {/* ACTION BUTTON */}
                   <TouchableOpacity
                     style={[
-                      styles.completeButton,
-                      (otp.join('').length < 5 || updating) && styles.disabledCompleteButton
+                      styles.pickupButton,
+                      updating && styles.disabledPickupButton
                     ]}
                     activeOpacity={0.9}
-                    onPress={handleCompleteOrder}
-                    disabled={otp.join('').length < 5 || updating}
+                    onPress={handlePickupOrder}
+                    disabled={updating}
                   >
                     {updating ? (
                       <ActivityIndicator size="small" color="#FFFFFF" />
                     ) : (
-                      <Text style={styles.completeButtonText}>COMPLETE</Text>
+                      <Text style={styles.pickupButtonText}>PICKUP ORDER</Text>
                     )}
                   </TouchableOpacity>
                 </View>
-
+              )}
+            </ScrollView>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="cart-outline" size={48} color="#B58A55" />
               </View>
-            ) : (
-              // Phase 1: Order Acceptance / Pickup details screen
-              <View style={styles.mainCard}>
-                {/* ORDER ID BLOCK */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>ORDER ID</Text>
-                  <Text style={styles.orderIdText}>{activeOrder.orderId || 'N/A'}</Text>
-                </View>
-
-                {/* RESTAURANT BLOCK */}
-                <View style={styles.block}>
-                  <Text style={styles.restaurantNameText}>
-                    {activeOrder.restaurantName?.toUpperCase() || 'N/A'}
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.mapButton}
-                    activeOpacity={0.8}
-                    onPress={handleOpenMap}
-                  >
-                    <Ionicons name="location" size={14} color="#FFFFFF" />
-                    <Text style={styles.mapButtonText}>VIEW IN MAP</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* PREPARATION TIME BLOCK */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>PREPARATION TIME</Text>
-                  {isTimerOverdue || remainingTimeText === '00:00' || getPrepTimeVal(activeOrder) === 0 ? (
-                    <>
-                      <View style={styles.timerRow}>
-                        <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
-                        <Text style={styles.timerReadyText}>Item is ready</Text>
-                      </View>
-                      <Text style={styles.prepReadySubtext}>
-                        Order preparation is completed
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.timerRow}>
-                        <Ionicons name="time-outline" size={24} color="#D97706" />
-                        <Text style={styles.timerValueText}>
-                          {remainingTimeText || (getPrepTimeVal(activeOrder) ? `${getPrepTimeVal(activeOrder)} mins` : 'N/A')}
-                        </Text>
-                      </View>
-                      {getPrepTimeVal(activeOrder) ? (
-                        <Text style={styles.prepSubtext}>
-                          {`Estimated Prep: ${getPrepTimeVal(activeOrder)} mins`}
-                        </Text>
-                      ) : null}
-                    </>
-                  )}
-                </View>
-
-                {/* DELIVERY FEE BLOCK */}
-                <View style={styles.block}>
-                  <Text style={styles.blockLabel}>DELIVERY FEE</Text>
-                  <Text style={styles.feeText}>₹{activeOrder.deliveryFee ?? activeOrder.deliveryCharge ?? 0}</Text>
-                </View>
-
-                {/* ITEMS TO PICKUP BLOCK */}
-                <View style={[styles.block, styles.itemsBlock]}>
-                  <Text style={styles.itemsLabel}>ITEMS TO PICKUP</Text>
-                  <View style={styles.divider} />
-                  {activeOrder.items && activeOrder.items.map((item, idx) => (
-                    <View key={item._id || idx} style={styles.itemRow}>
-                      <Text style={styles.itemName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text style={styles.itemQty}>
-                        x{item.quantity || 1}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-
-                {/* ACTION BUTTON */}
-                <TouchableOpacity
-                  style={[
-                    styles.pickupButton,
-                    updating && styles.disabledPickupButton
-                  ]}
-                  activeOpacity={0.9}
-                  onPress={handlePickupOrder}
-                  disabled={updating}
-                >
-                  {updating ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.pickupButtonText}>PICKUP ORDER</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </ScrollView>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconContainer}>
-              <Ionicons name="cart-outline" size={48} color="#B58A55" />
-            </View>
-            <Text style={styles.emptyTitle}>No Active Orders</Text>
-            <Text style={styles.emptySubtitle}>
-              You don&apos;t have any active deliveries accepted at the moment.
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
-              activeOpacity={0.9}
-              onPress={() => router.replace('/orders')}
-            >
-              <Text style={styles.emptyButtonText}>View Available Orders</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      
-      {/* PAYMENT DYNAMIC QR MODAL */}
-      <Modal
-        visible={qrModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={handleCloseQrModal}
-      >
-        <View style={styles.qrModalOverlay}>
-          <View style={[styles.qrModalCard, { maxWidth: 440 }]}>
-            <View style={styles.qrModalHeader}>
-              <Text style={styles.qrModalTitle}>Razorpay Dynamic QR Code</Text>
-              <TouchableOpacity onPress={handleCloseQrModal} style={styles.qrCloseBtn}>
-                <Ionicons name="close" size={22} color="#666666" />
+              <Text style={styles.emptyTitle}>No Active Orders</Text>
+              <Text style={styles.emptySubtitle}>
+                You don&apos;t have any active deliveries accepted at the moment.
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                activeOpacity={0.9}
+                onPress={() => router.replace('/orders')}
+              >
+                <Text style={styles.emptyButtonText}>View Available Orders</Text>
               </TouchableOpacity>
             </View>
+          )}
+        </KeyboardAvoidingView>
 
-            <View style={styles.qrModalBody}>
-              {qrLoading ? (
-                <View style={styles.qrLoadingBox}>
-                  <ActivityIndicator size="large" color="#2E7D32" />
-                  <Text style={styles.qrLoadingText}>Generating Razorpay Payment QR Code...</Text>
-                </View>
-              ) : qrPaymentPaid ? (
-                <View style={styles.qrSuccessBox}>
-                  <Ionicons name="checkmark-circle" size={64} color="#2E7D32" />
-                  <Text style={styles.qrSuccessTitle}>Payment Received!</Text>
-                  <Text style={styles.qrSuccessSubtext}>
-                    Payment of ₹{qrData?.amount || activeOrder?.grandTotal || 0} confirmed by Razorpay.
-                  </Text>
-                  <Text style={styles.qrOtpPrompt}>
-                    Customer app now displays the 5-digit Delivery OTP. Please enter the OTP to complete delivery.
-                  </Text>
-                  <TouchableOpacity style={styles.qrDoneButton} onPress={handleCloseQrModal}>
-                    <Text style={styles.qrDoneButtonText}>ENTER OTP NOW</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : qrData ? (
-                <View style={styles.qrDisplayBox}>
-                  <Text style={styles.qrAmountLabel}>Collect Amount</Text>
-                  <Text style={styles.qrAmountValue}>₹{qrData.amount}</Text>
+        {/* PAYMENT DYNAMIC QR MODAL */}
+        <Modal
+          visible={qrModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCloseQrModal}
+        >
+          <View style={styles.qrModalOverlay}>
+            <View style={[styles.qrModalCard, { maxWidth: 440 }]}>
+              <View style={styles.qrModalHeader}>
+                <Text style={styles.qrModalTitle}>Razorpay Dynamic QR Code</Text>
+                <TouchableOpacity onPress={handleCloseQrModal} style={styles.qrCloseBtn}>
+                  <Ionicons name="close" size={22} color="#666666" />
+                </TouchableOpacity>
+              </View>
 
-                  {qrData.qrCodeUrl ? (
-                    <View style={styles.qrImageWrapper}>
-                      {Platform.OS === 'web' ? (
-                        <img
-                          src={qrData.qrCodeUrl}
-                          alt="Razorpay Dynamic QR Code"
-                          style={{ width: '100%', maxWidth: 320, height: 440, objectFit: 'contain' }}
-                        />
-                      ) : (
-                        <Image
-                          source={{ uri: qrData.qrCodeUrl }}
-                          style={{ width: '100%', maxWidth: 320, height: 440 }}
-                          resizeMode="contain"
-                        />
-                      )}
-                    </View>
-                  ) : null}
-
-                  <Text style={styles.qrScanInstructions}>
-                    Ask customer to scan with GPay, PhonePe, Paytm, or BHIM UPI
-                  </Text>
-
-                  <View style={styles.pollingStatusRow}>
-                    <ActivityIndicator size="small" color="#2E7D32" />
-                    <Text style={styles.pollingStatusText}>Waiting for payment completion...</Text>
+              <View style={styles.qrModalBody}>
+                {qrLoading ? (
+                  <View style={styles.qrLoadingBox}>
+                    <ActivityIndicator size="large" color="#2E7D32" />
+                    <Text style={styles.qrLoadingText}>Generating Razorpay Payment QR Code...</Text>
                   </View>
-                </View>
-              ) : null}
+                ) : qrPaymentPaid ? (
+                  <View style={styles.qrSuccessBox}>
+                    <Ionicons name="checkmark-circle" size={64} color="#2E7D32" />
+                    <Text style={styles.qrSuccessTitle}>Payment Received!</Text>
+                    <Text style={styles.qrSuccessSubtext}>
+                      Payment of ₹{qrData?.amount || activeOrder?.grandTotal || 0} confirmed by Razorpay.
+                    </Text>
+                    <Text style={styles.qrOtpPrompt}>
+                      Customer app now displays the 5-digit Delivery OTP. Please enter the OTP to complete delivery.
+                    </Text>
+                    <TouchableOpacity style={styles.qrDoneButton} onPress={handleCloseQrModal}>
+                      <Text style={styles.qrDoneButtonText}>ENTER OTP NOW</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : qrData ? (
+                  <View style={styles.qrDisplayBox}>
+                    <Text style={styles.qrAmountLabel}>Collect Amount</Text>
+                    <Text style={styles.qrAmountValue}>₹{qrData.amount}</Text>
+
+                    {qrData.qrCodeUrl ? (
+                      <View style={styles.qrImageWrapper}>
+                        {Platform.OS === 'web' ? (
+                          <img
+                            src={qrData.qrCodeUrl}
+                            alt="Razorpay Dynamic QR Code"
+                            style={{ width: '100%', maxWidth: 320, height: 440, objectFit: 'contain' }}
+                          />
+                        ) : (
+                          <Image
+                            source={{ uri: qrData.qrCodeUrl }}
+                            style={{ width: '100%', maxWidth: 320, height: 440 }}
+                            resizeMode="contain"
+                          />
+                        )}
+                      </View>
+                    ) : null}
+
+                    <Text style={styles.qrScanInstructions}>
+                      Ask customer to scan with GPay, PhonePe, Paytm, or BHIM UPI
+                    </Text>
+
+                    <View style={styles.pollingStatusRow}>
+                      <ActivityIndicator size="small" color="#2E7D32" />
+                      <Text style={styles.pollingStatusText}>Waiting for payment completion...</Text>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-    </SafeAreaView>
+      </SafeAreaView>
 
       {/* PICKUP CONFIRMATION CUSTOM MODAL */}
       <Modal
@@ -1212,7 +1369,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 110,
+    paddingBottom: 24,
   },
   mainCard: {
     backgroundColor: '#EAE5D9', // Matching the warm sand/beige card frame tone
@@ -1495,36 +1652,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  paidSuccessCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8F5E9',
+    borderRadius: 14,
+    padding: 14,
+    gap: 12,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  paidSuccessTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#2E7D32',
+    marginBottom: 3,
+  },
+  paidSuccessSubtext: {
+    fontSize: 13,
+    color: '#388E3C',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  otpSectionContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1.5,
+    borderTopColor: '#EAE5D9',
+  },
   otpSectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
     color: '#2A3037',
     textAlign: 'center',
     marginBottom: 6,
     letterSpacing: 0.5,
   },
+  otpNoticeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8E8882',
+    textAlign: 'center',
+    paddingVertical: 6,
+  },
   otpRow: {
     flexDirection: 'row',
     justifyContent: 'center',
+    alignItems: 'center',
     gap: 8,
     marginVertical: 14,
     width: '100%',
+    maxWidth: 320,
+    alignSelf: 'center',
   },
   otpInput: {
-    width: 44,
-    height: 48,
+    flex: 1,
+    maxWidth: 48,
+    height: 52,
     borderBottomWidth: 2.5,
     borderBottomColor: '#B58A55',
-    backgroundColor: 'transparent',
-    fontSize: 24,
+    backgroundColor: '#F9F8F6',
+    borderRadius: 8,
+    fontSize: 22,
     fontWeight: '700',
     textAlign: 'center',
+    textAlignVertical: 'center',
     color: '#2A3037',
-    padding: 0,
+    paddingHorizontal: 0,
+    paddingVertical: Platform.OS === 'ios' ? 8 : 0,
   },
   otpInputFocused: {
     borderBottomColor: '#2E7D32',
     borderBottomWidth: 3,
+    backgroundColor: '#FFFFFF',
   },
   completeButton: {
     backgroundColor: '#2E7D32', // Emerald green

@@ -22,6 +22,12 @@ class DeliveryBoyForegroundService : Service() {
         const val EXTRA_BODY = "EXTRA_BODY"
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        // Guarantee startForeground is called immediately upon service creation to beat the 5-second deadline
+        startForegroundInternal("🟢 Delivery Boy — ON", "Searching for nearby orders...")
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -44,8 +50,6 @@ class DeliveryBoyForegroundService : Service() {
             return START_NOT_STICKY
         }
 
-        // For ACTION_START, null intent (system sticky restart), or any unhandled action:
-        // ALWAYS call startForegroundInternal immediately to prevent ForegroundServiceDidNotStartInTimeException crash.
         val title = intent?.getStringExtra(EXTRA_TITLE) ?: "🟢 Delivery Boy — ON"
         val body = intent?.getStringExtra(EXTRA_BODY) ?: "Searching for nearby orders..."
         startForegroundInternal(title, body)
@@ -95,29 +99,41 @@ class DeliveryBoyForegroundService : Service() {
                     startForeground(
                         NOTIFICATION_ID,
                         notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
                     )
-                } catch (e: Exception) {
-                    e.printStackTrace()
+                } catch (e1: Exception) {
                     try {
-                        stopSelf()
-                    } catch (_: Exception) {}
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } catch (e2: Exception) {
+                        try {
+                            startForeground(
+                                NOTIFICATION_ID,
+                                notification,
+                                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING
+                            )
+                        } catch (e3: Exception) {
+                            try {
+                                startForeground(NOTIFICATION_ID, notification)
+                            } catch (e4: Exception) {
+                                e4.printStackTrace()
+                            }
+                        }
+                    }
                 }
             } else {
                 try {
                     startForeground(NOTIFICATION_ID, notification)
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    try {
-                        stopSelf()
-                    } catch (_: Exception) {}
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            try {
-                stopSelf()
-            } catch (_: Exception) {}
         }
     }
 

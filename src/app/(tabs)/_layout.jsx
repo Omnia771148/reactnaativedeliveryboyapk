@@ -1,39 +1,42 @@
 import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { startDeliveryForegroundService, stopDeliveryForegroundService } from '@/utils/foregroundService';
-import { ensureFCMTokenRegistered, saveFCMTokenToBackend } from '@/utils/notifications';
+import { ensureFCMTokenRegistered, saveFCMTokenToBackend, getExpoNotifications } from '@/utils/notifications';
 import { playOrderSound, stopOrderSoundNative } from '@/utils/soundService';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
-import * as Notifications from 'expo-notifications';
 import { Tabs, router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, AppState, DeviceEventEmitter, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+const Notifications = getExpoNotifications();
 
-if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('order_notifications', {
-    name: 'Order Notifications',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 500, 200, 500, 200, 500],
-    lightColor: '#008000',
-    sound: 'ordernotification.wav',
-    enableVibrate: true,
-    enableLights: true,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    audioAttributes: {
-      usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
-      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
-    },
-  }).catch((err) => console.warn('Failed to set Android notification channel:', err));
+if (Notifications) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+
+  if (Platform.OS === 'android') {
+    Notifications.setNotificationChannelAsync('order_notifications', {
+      name: 'Order Notifications',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 500, 200, 500, 200, 500],
+      lightColor: '#008000',
+      sound: 'ordernotification.wav',
+      enableVibrate: true,
+      enableLights: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      audioAttributes: {
+        usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+        contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      },
+    }).catch((err) => console.warn('Failed to set Android notification channel:', err));
+  }
 }
 
 // Notification Channel configured for order_notifications
@@ -512,18 +515,20 @@ export default function Layout() {
             DeviceEventEmitter.emit('refreshOrdersCount');
 
             // Trigger local top banner notification popup
-            try {
-              await Notifications.scheduleNotificationAsync({
-                content: {
-                  title: remoteMessage.notification?.title || 'New Order Available!',
-                  body: remoteMessage.notification?.body || 'A new delivery order request is available.',
-                  sound: 'ordernotification.wav',
-                  channelId: 'order_notifications',
-                },
-                trigger: null,
-              });
-            } catch (notifErr) {
-              console.warn('Local notification trigger warning:', notifErr);
+            if (Notifications) {
+              try {
+                await Notifications.scheduleNotificationAsync({
+                  content: {
+                    title: remoteMessage.notification?.title || 'New Order Available!',
+                    body: remoteMessage.notification?.body || 'A new delivery order request is available.',
+                    sound: 'ordernotification.wav',
+                    channelId: 'order_notifications',
+                  },
+                  trigger: null,
+                });
+              } catch (notifErr) {
+                console.warn('Local notification trigger warning:', notifErr);
+              }
             }
           }
         });
@@ -561,20 +566,23 @@ export default function Layout() {
       }
     });
 
-    const expoNotifResponseSub = Notifications.addNotificationResponseReceivedListener((_response) => {
-      if (isMounted) {
-        console.log('Expo local notification tapped by user, navigating to orders');
-        router.push('/orders');
-        DeviceEventEmitter.emit('refreshOrdersCount');
-      }
-    });
+    let expoNotifResponseSub = null;
+    if (Notifications && Notifications.addNotificationResponseReceivedListener) {
+      expoNotifResponseSub = Notifications.addNotificationResponseReceivedListener((_response) => {
+        if (isMounted) {
+          console.log('Expo local notification tapped by user, navigating to orders');
+          router.push('/orders');
+          DeviceEventEmitter.emit('refreshOrdersCount');
+        }
+      });
+    }
 
     return () => {
       isMounted = false;
       stopSoundSub.remove();
       startSoundSub.remove();
       appStateSub.remove();
-      expoNotifResponseSub.remove();
+      if (expoNotifResponseSub) expoNotifResponseSub.remove();
       if (unsubscribeMessage) unsubscribeMessage();
       if (unsubscribeTokenRefresh) unsubscribeTokenRefresh();
       if (unsubscribeNotificationOpened) unsubscribeNotificationOpened();
