@@ -93,7 +93,9 @@ export default function HomeScreen() {
           }
           // Valid session: Update the date and auto-navigate to homepage
           await AsyncStorage.setItem('lastLoginDate', new Date().toISOString());
-          router.replace('/homepage');
+          setTimeout(() => {
+            router.replace('/homepage');
+          }, 0);
         }
       } catch (error) {
         console.error('Session check error:', error);
