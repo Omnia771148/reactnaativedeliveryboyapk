@@ -31,19 +31,134 @@ export default function HomepageScreen() {
   // Fetch delivery boy completed orders and earnings stats from backend API
   const fetchEarnings = useCallback(async (id) => {
     try {
-      const response = await fetch(`${API_URL}/api/deliveryboy/${id}/earnings`);
-      if (response.ok) {
-        let data = null;
-        try {
+      // 1. Fetch backend earnings stats
+      let backendStats = null;
+      try {
+        const response = await fetch(`${API_URL}/api/deliveryboy/${id}/earnings`);
+        if (response.ok) {
           const text = await response.text();
-          data = JSON.parse(text);
-        } catch (_e) {
-          console.error('Failed to parse earnings response JSON');
+          backendStats = JSON.parse(text);
         }
-        if (data) {
-          setStats(data);
-        }
+      } catch (_e) {}
+
+      // 2. Fetch completed orders from Finalcompleatedorders & deliveryboy orders endpoints
+      let ordersList = [];
+      const orderEndpoints = [
+        `${API_URL}/api/finalcompleatedorders/${id}`,
+        `${API_URL}/api/finalcompleatedorders`,
+        `${API_URL}/api/finalcompletedorders/${id}`,
+        `${API_URL}/api/finalcompletedorders`,
+        `${API_URL}/api/Finalcompleatedorders/${id}`,
+        `${API_URL}/api/Finalcompleatedorders`,
+        `${API_URL}/api/deliveryboy/${id}/orders`,
+        `${API_URL}/api/completedorders/${id}`,
+        `${API_URL}/api/completedorders`
+      ];
+
+      for (const endpoint of orderEndpoints) {
+        try {
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const text = await res.text();
+            const parsed = JSON.parse(text);
+            const list = Array.isArray(parsed) ? parsed : (parsed?.data || parsed?.orders || []);
+            if (Array.isArray(list) && list.length > 0) {
+              const isUserEndpoint = endpoint.includes(`/${id}`);
+              const userOrders = list.filter(o => {
+                if (!o) return false;
+                const dbId = o.deliveryBoyId || o.deliveryBoyUserid || o.deliveryboyId || o.deliveryboy_id || o.driverId || o.driver_id;
+                if (dbId) {
+                  return String(dbId) === String(id);
+                }
+                return isUserEndpoint;
+              });
+              userOrders.forEach(ord => {
+                const ordKey = ord._id || ord.orderId || ord.id;
+                if (!ordersList.some(existing => (existing._id || existing.orderId || existing.id) === ordKey)) {
+                  ordersList.push(ord);
+                }
+              });
+            }
+          }
+        } catch (_e) {}
       }
+
+      // Calculate exact earnings and counts from orders list
+      const now = new Date();
+      let todayCount = 0;
+      let todaySum = 0;
+      let monthCount = 0;
+      let monthSum = 0;
+
+      ordersList.forEach((item) => {
+        const dateStr = item.orderDate || item.completedAt || item.createdAt || item.updatedAt || item.date;
+        const charge = Number(
+          item.deliveryCharge ??
+          item.deliveryFee ??
+          item.deliverycharges ??
+          item.delivery_charge ??
+          item.delivery_fee ??
+          item.earnings ??
+          item.amount ??
+          0
+        ) || 0;
+
+        let itemDate = null;
+        if (dateStr) {
+          const d = new Date(dateStr);
+          if (!isNaN(d.getTime())) {
+            itemDate = d;
+          }
+        }
+
+        if (itemDate) {
+          const isSameDay =
+            itemDate.getDate() === now.getDate() &&
+            itemDate.getMonth() === now.getMonth() &&
+            itemDate.getFullYear() === now.getFullYear();
+
+          const isSameMonth =
+            itemDate.getMonth() === now.getMonth() &&
+            itemDate.getFullYear() === now.getFullYear();
+
+          if (isSameDay) {
+            todayCount++;
+            todaySum += charge;
+          }
+          if (isSameMonth) {
+            monthCount++;
+            monthSum += charge;
+          }
+        } else {
+          todayCount++;
+          todaySum += charge;
+          monthCount++;
+          monthSum += charge;
+        }
+      });
+
+      const finalTodayOrders = (todayCount > 0 || ordersList.length > 0)
+        ? todayCount
+        : (backendStats?.todayOrders ?? 0);
+
+      const finalTodayEarnings = (todaySum > 0)
+        ? todaySum
+        : (Number(backendStats?.todayEarnings) || 0);
+
+      const finalTotalOrders = (monthCount > 0 || ordersList.length > 0)
+        ? (monthCount > 0 ? monthCount : ordersList.length)
+        : (backendStats?.totalOrders ?? 0);
+
+      const finalMonthlyEarnings = (monthSum > 0 || todaySum > 0)
+        ? (monthSum > 0 ? monthSum : todaySum)
+        : (Number(backendStats?.monthlyEarnings) || 0);
+
+      setStats({
+        todayOrders: finalTodayOrders,
+        todayEarnings: Number((Number(finalTodayEarnings) || 0).toFixed(2)),
+        totalOrders: finalTotalOrders,
+        monthlyEarnings: Number((Number(finalMonthlyEarnings) || 0).toFixed(2)),
+      });
     } catch (error) {
       console.error('Error fetching earnings:', error);
     }
@@ -332,7 +447,7 @@ export default function HomepageScreen() {
             {/* Card 2: Today Earnings */}
             <View style={styles.halfCard}>
               <Text style={styles.cardLabel}>Today earnings</Text>
-              <Text style={styles.cardValue}>{stats.todayEarnings} Rs</Text>
+              <Text style={styles.cardValue}>{Number(Number(stats.todayEarnings || 0).toFixed(2))} Rs</Text>
             </View>
           </View>
 
@@ -352,7 +467,7 @@ export default function HomepageScreen() {
               {/* Right Column: Monthly Earnings */}
               <View style={styles.monthlyCol}>
                 <Text style={styles.cardLabel}>Monthly earnings</Text>
-                <Text style={styles.cardValue}>{stats.monthlyEarnings} Rs</Text>
+                <Text style={styles.cardValue}>{Number(Number(stats.monthlyEarnings || 0).toFixed(2))} Rs</Text>
               </View>
             </View>
           </View>

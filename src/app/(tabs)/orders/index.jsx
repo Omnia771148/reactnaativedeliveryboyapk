@@ -355,7 +355,39 @@ export default function OrdersScreen() {
         return;
       }
 
-      // Send order accept POST request directly
+      // 1. PRE-ACCEPT VERIFICATION WITH RANDOM JITTER
+      // Add a randomized delay (0-200ms) so two simultaneous taps on separate devices are serialized
+      const jitter = Math.floor(Math.random() * 200);
+      await new Promise(r => setTimeout(r, jitter));
+
+      // Check backend DB to see if the order has already been accepted by another delivery partner
+      try {
+        const checkRes = await fetch(`${API_URL}/api/acceptedorders`);
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const currentInDb = Array.isArray(checkData)
+            ? checkData.find(o => String(o._id) === String(order._id) || String(o.orderId) === String(order.orderId))
+            : null;
+
+          if (currentInDb) {
+            const existingBoy = currentInDb.deliveryBoyId || currentInDb.deliveryBoyUserid || currentInDb.deliveryboyId || currentInDb.driverId;
+            if (
+              currentInDb.status === 'accepted' ||
+              currentInDb.isAccepted === true ||
+              (existingBoy && String(existingBoy) !== String(deliveryBoyId))
+            ) {
+              setErrorModalMessage("sorry the order was already accepted by other delivery boy\n\nbetter luck next time");
+              setErrorModalVisible(true);
+              fetchOrders();
+              return;
+            }
+          }
+        }
+      } catch (_preErr) {
+        console.error('Pre-accept check warning:', _preErr);
+      }
+
+      // 2. SEND POST ACCEPT REQUEST
       const response = await fetch(`${API_URL}/api/acceptedorders/${order._id}/accept`, {
         method: 'POST',
         headers: {
@@ -377,6 +409,50 @@ export default function OrdersScreen() {
       }
 
       if (response.ok) {
+        // 3. POST-ACCEPT VERIFICATION & AUTOMATIC BACKEND ROLLBACK
+        let isConfirmedForThisDriver = true;
+        try {
+          await new Promise(r => setTimeout(r, 250));
+          const checkActiveRes = await fetch(`${API_URL}/api/deliveryboy/${deliveryBoyId}/activeorder`);
+          if (checkActiveRes.ok) {
+            const activeText = await checkActiveRes.text();
+            if (activeText && activeText.trim().length > 0) {
+              const activeData = JSON.parse(activeText);
+              const activeDriverId = activeData.deliveryBoyId || activeData.deliveryBoyUserid || activeData.deliveryboyId || activeData.driverId;
+              const activeOrderId = activeData._id || activeData.orderId || activeData.id;
+              const targetOrderId = order._id || order.orderId || order.id;
+
+              if (activeDriverId && String(activeDriverId) !== String(deliveryBoyId)) {
+                isConfirmedForThisDriver = false;
+              } else if (activeOrderId && String(activeOrderId) !== String(targetOrderId)) {
+                isConfirmedForThisDriver = false;
+              }
+            } else {
+              isConfirmedForThisDriver = false;
+            }
+          }
+        } catch (_verifyErr) {
+          console.error('Active order verification error:', _verifyErr);
+        }
+
+        if (!isConfirmedForThisDriver) {
+          // Rollback: Unassign/reject this driver's accept on the backend so the order isn't assigned to 2 drivers in DB
+          try {
+            await fetch(`${API_URL}/api/acceptedorders/${order._id}/reject`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ deliveryBoyId }),
+            });
+          } catch (_rollbackErr) {
+            console.error('Rollback error:', _rollbackErr);
+          }
+
+          setErrorModalMessage("sorry the order was already accepted by other delivery boy\n\nbetter luck next time");
+          setErrorModalVisible(true);
+          fetchOrders();
+          return;
+        }
+
         setOrders((prev) => prev.filter(o => o._id !== order._id && o.orderId !== order.orderId));
         setHasActiveOrder(true);
         DeviceEventEmitter.emit('stopOrderSound');
@@ -389,8 +465,8 @@ export default function OrdersScreen() {
           const checkRes = await fetch(`${API_URL}/api/acceptedorders`);
           if (checkRes.ok) {
             const checkData = await checkRes.json();
-            const matchingOrder = Array.isArray(checkData) ? checkData.find(o => o._id === order._id) : null;
-            if (matchingOrder && matchingOrder.deliveryBoyId && matchingOrder.deliveryBoyId !== deliveryBoyId) {
+            const matchingOrder = Array.isArray(checkData) ? checkData.find(o => o._id === order._id || o.orderId === order.orderId) : null;
+            if (matchingOrder && matchingOrder.deliveryBoyId && String(matchingOrder.deliveryBoyId) !== String(deliveryBoyId)) {
               isAlreadyTaken = true;
             }
           }
@@ -406,6 +482,7 @@ export default function OrdersScreen() {
         ) {
           setErrorModalMessage("sorry the order was already accepted by other delivery boy\n\nbetter luck next time");
           setErrorModalVisible(true);
+          fetchOrders();
         } else {
           setErrorModalMessage(data.message || 'Failed to accept order.');
           setErrorModalVisible(true);

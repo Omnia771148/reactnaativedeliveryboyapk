@@ -29,7 +29,10 @@ export default function MyReviewsScreen() {
         } catch (_e) {
           console.error('Failed to parse reviews JSON');
         }
-        setReviews(Array.isArray(data) ? data : []);
+        const ratedReviews = Array.isArray(data)
+          ? data.filter(item => Number(item.deliveryBoyRating || 0) > 0)
+          : [];
+        setReviews(ratedReviews);
       } else {
         console.error('Failed to fetch reviews:', response.status);
       }
@@ -95,15 +98,10 @@ export default function MyReviewsScreen() {
   const calculateAverageRating = () => {
     if (!reviews || reviews.length === 0) return '0.0';
     let total = 0;
-    let count = 0;
     reviews.forEach(item => {
-      const r = Number(item.deliveryBoyRating || 0);
-      if (r > 0) {
-        total += r;
-        count++;
-      }
+      total += Number(item.deliveryBoyRating || 0);
     });
-    return count > 0 ? (total / count).toFixed(1) : '0.0';
+    return (total / reviews.length).toFixed(1);
   };
 
   const renderReviewItem = ({ item }) => {
@@ -112,6 +110,10 @@ export default function MyReviewsScreen() {
     const hasReviewText = reviewText.length > 0;
     const orderId = item.orderId || 'ORD-N/A';
     const dateStr = item.createdAt;
+
+    if (rating <= 0) {
+      return null;
+    }
 
     return (
       <View style={styles.reviewCard}>
@@ -127,12 +129,15 @@ export default function MyReviewsScreen() {
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Card Body: Review Text */}
-        <View style={styles.cardBody}>
-          <Text style={hasReviewText ? styles.reviewText : styles.noReviewText}>
-            {hasReviewText ? reviewText : 'no review given by customer'}
-          </Text>
-        </View>
+        {/* Card Body: Review Text (Rendered only if text exists) */}
+        {hasReviewText && (
+          <>
+            <View style={styles.cardBody}>
+              <Text style={styles.reviewText}>{reviewText}</Text>
+            </View>
+            <View style={styles.divider} />
+          </>
+        )}
 
         {/* Card Footer: Date and Time */}
         <View style={styles.cardFooter}>

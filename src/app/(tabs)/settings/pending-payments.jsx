@@ -121,6 +121,19 @@ export default function PendingPaymentsScreen() {
     ? pendingData
     : [];
 
+  const sortedTransactions = [...transactionsList].sort((a, b) => {
+    const getDate = (item) => {
+      if (!item) return 0;
+      const raw = typeof item === 'object'
+        ? (item.createdAt || item.date || item.timestamp || item.updatedAt || item.paymentDate || item.created_at)
+        : item;
+      if (!raw) return 0;
+      const d = new Date(raw).getTime();
+      return isNaN(d) ? 0 : d;
+    };
+    return getDate(b) - getDate(a);
+  });
+
   const rawGrandTotal =
     pendingData?.grandTotal ??
     pendingData?.totalPending ??
@@ -136,10 +149,10 @@ export default function PendingPaymentsScreen() {
 
   const deliveryChargesVal = (rawGrandTotal !== null && rawGrandTotal !== undefined)
     ? Number(rawGrandTotal)
-    : transactionsList.reduce((sum, item) => sum + getItemAmount(item), 0);
+    : sortedTransactions.reduce((sum, item) => sum + getItemAmount(item), 0);
 
-  const hasTransactions = transactionsList.length > 0;
-  const transactionCount = transactionsList.length;
+  const hasTransactions = sortedTransactions.length > 0;
+  const transactionCount = sortedTransactions.length;
 
   if (loading) {
     return <LoadingOverlay visible={true} />;
@@ -217,7 +230,7 @@ export default function PendingPaymentsScreen() {
                 </Text>
               </View>
 
-              {transactionsList.map((item, index) => (
+              {sortedTransactions.map((item, index) => (
                 <View key={item.transactionId || item.id || item._id || index} style={styles.transactionCard}>
                   {/* Top Content Row */}
                   <View style={styles.txTopRow}>

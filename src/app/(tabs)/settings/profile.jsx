@@ -181,16 +181,6 @@ export default function ProfileScreen() {
               </View>
             </View>
 
-            {/* Partner ID */}
-            <View style={styles.detailItem}>
-              <View style={styles.iconContainer}>
-                <Ionicons name="finger-print-outline" size={20} color="#2A3037" />
-              </View>
-              <View style={styles.textContainer}>
-                <Text style={styles.label}>PARTNER ID</Text>
-                <Text style={styles.value}>{user?._id || 'N/A'}</Text>
-              </View>
-            </View>
 
             {/* SECTION 2: BANK DETAILS */}
             <Text style={[styles.sectionHeader, styles.sectionHeaderGap]}>BANK DETAILS</Text>
@@ -424,12 +414,6 @@ const styles = StyleSheet.create({
     width: 24,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  hashIconText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#000000',
-    marginTop: -2,
   },
   textContainer: {
     flex: 1,

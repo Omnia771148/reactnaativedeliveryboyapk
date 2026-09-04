@@ -30,19 +30,48 @@ export default function MyOrdersScreen() {
         return;
       }
 
-      const response = await fetch(`${API_URL}/api/deliveryboy/${storedId}/orders`);
-      if (response.ok) {
-        let data = [];
+      let allOrders = [];
+      const orderEndpoints = [
+        `${API_URL}/api/finalcompleatedorders/${storedId}`,
+        `${API_URL}/api/finalcompleatedorders`,
+        `${API_URL}/api/finalcompletedorders/${storedId}`,
+        `${API_URL}/api/finalcompletedorders`,
+        `${API_URL}/api/Finalcompleatedorders/${storedId}`,
+        `${API_URL}/api/Finalcompleatedorders`,
+        `${API_URL}/api/deliveryboy/${storedId}/orders`,
+        `${API_URL}/api/completedorders/${storedId}`,
+        `${API_URL}/api/completedorders`
+      ];
+
+      for (const endpoint of orderEndpoints) {
         try {
-          const text = await response.text();
-          data = JSON.parse(text);
-        } catch (_e) {
-          console.error('Failed to parse orders response JSON');
-        }
-        setOrders(data);
-      } else {
-        console.error('Failed to fetch orders:', response.status);
+          const res = await fetch(endpoint);
+          if (res.ok) {
+            const text = await res.text();
+            const parsed = JSON.parse(text);
+            const list = Array.isArray(parsed) ? parsed : (parsed?.data || parsed?.orders || []);
+            if (Array.isArray(list) && list.length > 0) {
+              const isUserEndpoint = endpoint.includes(`/${storedId}`);
+              const userOrders = list.filter(o => {
+                if (!o) return false;
+                const dbId = o.deliveryBoyId || o.deliveryBoyUserid || o.deliveryboyId || o.deliveryboy_id || o.driverId || o.driver_id;
+                if (dbId) {
+                  return String(dbId) === String(storedId);
+                }
+                return isUserEndpoint;
+              });
+              userOrders.forEach(ord => {
+                const ordKey = ord._id || ord.orderId || ord.id;
+                if (!allOrders.some(existing => (existing._id || existing.orderId || existing.id) === ordKey)) {
+                  allOrders.push(ord);
+                }
+              });
+            }
+          }
+        } catch (_e) {}
       }
+
+      setOrders(allOrders);
     } catch (error) {
       console.error('Failed to fetch orders:', error);
     } finally {
@@ -105,13 +134,27 @@ export default function MyOrdersScreen() {
   };
 
   const renderOrderItem = ({ item }) => {
+    const displayOrderId = item.orderId || item._id || item.id || 'ORD-UNKNOWN';
+    const displayDate = item.orderDate || item.completedAt || item.createdAt || item.updatedAt || item.date;
+    const displayRest = item.restaurantName || item.restaurant_name || item.vendorName || item.hotelName;
+    const displayCharge = Number(
+      item.deliveryCharge ??
+      item.deliveryFee ??
+      item.deliverycharges ??
+      item.delivery_charge ??
+      item.delivery_fee ??
+      item.earnings ??
+      item.amount ??
+      0
+    ) || 0;
+
     return (
       <View style={styles.orderCard}>
         {/* Card Header: Receipt Icon, Order ID, and Status Badge */}
         <View style={styles.cardHeader}>
           <View style={styles.orderIdContainer}>
             <Ionicons name="receipt-outline" size={18} color="#2A3037" />
-            <Text style={styles.orderIdText}>{item.orderId || 'ORD-UNKNOWN'}</Text>
+            <Text style={styles.orderIdText}>{displayOrderId}</Text>
           </View>
           <View style={styles.statusBadge}>
             <View style={styles.statusDot} />
@@ -127,21 +170,21 @@ export default function MyOrdersScreen() {
           {/* Order date */}
           <View style={styles.detailRow}>
             <Ionicons name="calendar-outline" size={15} color="#8E8882" />
-            <Text style={styles.detailText}>{formatOrderDate(item.orderDate || item.completedAt)}</Text>
+            <Text style={styles.detailText}>{formatOrderDate(displayDate)}</Text>
           </View>
 
           {/* Restaurant name */}
-          {item.restaurantName && (
+          {!!displayRest && (
             <View style={styles.detailRow}>
               <Ionicons name="restaurant-outline" size={15} color="#8E8882" />
-              <Text style={styles.detailText}>{item.restaurantName}</Text>
+              <Text style={styles.detailText}>{displayRest}</Text>
             </View>
           )}
 
           {/* Delivery Charge Footer (Themed sand block) */}
           <View style={styles.chargeFooter}>
             <Text style={styles.chargeLabel}>DELIVERY CHARGE</Text>
-            <Text style={styles.chargeValue}>Rs. {item.deliveryCharge || 0}</Text>
+            <Text style={styles.chargeValue}>Rs. {Number(Number(displayCharge).toFixed(2))}</Text>
           </View>
         </View>
       </View>

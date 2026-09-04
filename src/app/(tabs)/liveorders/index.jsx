@@ -286,6 +286,12 @@ export default function LiveOrdersScreen() {
           console.error('Failed to parse active order JSON');
         }
         if (data) {
+          const activeDriverId = data.deliveryBoyId || data.deliveryBoyUserid || data.deliveryboyId || data.driverId;
+          if (activeDriverId && String(activeDriverId) !== String(id)) {
+            setActiveOrder(null);
+            setIsLocallyPickedUp(false);
+            return;
+          }
           setActiveOrder(data);
           const keysToCheck = [data._id, data.orderId, data.id].filter(Boolean);
           let isPicked = false;
@@ -479,6 +485,19 @@ export default function LiveOrdersScreen() {
     }
 
     openUrlInBrowserOrApp(url);
+  };
+
+  const getFormattedAddress = (order) => {
+    if (!order) return 'N/A';
+    if (order.deliveryAddress && typeof order.deliveryAddress === 'string' && order.deliveryAddress.trim().length > 0) {
+      return order.deliveryAddress.trim();
+    }
+    const parts = [];
+    if (order.flatNo) parts.push(order.flatNo);
+    if (order.street) parts.push(order.street);
+    if (order.landmark) parts.push(order.landmark);
+    if (order.address) parts.push(order.address);
+    return parts.length > 0 ? parts.join(', ') : 'N/A';
   };
 
   const handleOpenCustomerMap = async () => {
@@ -893,10 +912,7 @@ export default function LiveOrdersScreen() {
                     <View style={styles.detailTextRow}>
                       <Text style={styles.detailTextLabel}>Address:</Text>
                       <Text style={styles.detailTextVal}>
-                        {activeOrder.flatNo ? `${activeOrder.flatNo}, ` : ''}
-                        {activeOrder.street ? `${activeOrder.street}, ` : ''}
-                        {activeOrder.landmark ? `${activeOrder.landmark}\n` : ''}
-                        {activeOrder.deliveryAddress || 'N/A'}
+                        {getFormattedAddress(activeOrder)}
                       </Text>
                     </View>
 
@@ -1041,19 +1057,16 @@ export default function LiveOrdersScreen() {
                       ) : (
                         <View style={styles.pendingPaymentCard}>
                           <View style={styles.pendingHeaderRow}>
-                            <Ionicons name="alert-circle" size={22} color="#E65100" />
+                            <Ionicons name="alert-circle" size={18} color="#E65100" />
                             <Text style={styles.pendingTitle}>Payment Pending: ₹{activeOrder.grandTotal || activeOrder.totalPrice || 0}</Text>
                           </View>
-                          <Text style={styles.pendingNoticeText}>
-                            Customer must pay via Razorpay Dynamic QR Code at doorstep. Cash collection is disabled.
-                          </Text>
 
                           <TouchableOpacity
                             style={styles.showQrButton}
                             activeOpacity={0.88}
                             onPress={handleShowPaymentQR}
                           >
-                            <Ionicons name="qr-code-outline" size={20} color="#FFFFFF" />
+                            <Ionicons name="qr-code-outline" size={16} color="#FFFFFF" />
                             <Text style={styles.showQrButtonText}>SHOW PAYMENT QR CODE</Text>
                           </TouchableOpacity>
 
@@ -1187,7 +1200,7 @@ export default function LiveOrdersScreen() {
           onRequestClose={handleCloseQrModal}
         >
           <View style={styles.qrModalOverlay}>
-            <View style={[styles.qrModalCard, { maxWidth: 440 }]}>
+            <View style={[styles.qrModalCard, { maxWidth: 420, paddingVertical: 20, paddingHorizontal: 20 }]}>
               <View style={styles.qrModalHeader}>
                 <Text style={styles.qrModalTitle}>Razorpay Dynamic QR Code</Text>
                 <TouchableOpacity onPress={handleCloseQrModal} style={styles.qrCloseBtn}>
@@ -1221,26 +1234,22 @@ export default function LiveOrdersScreen() {
                     <Text style={styles.qrAmountValue}>₹{qrData.amount}</Text>
 
                     {qrData.qrCodeUrl ? (
-                      <View style={styles.qrImageWrapper}>
+                      <View style={{ width: 310, height: 440, overflow: 'hidden', alignItems: 'center', justifyContent: 'flex-start', borderRadius: 16, marginVertical: 12, backgroundColor: '#FFFFFF' }}>
                         {Platform.OS === 'web' ? (
                           <img
                             src={qrData.qrCodeUrl}
-                            alt="Razorpay Dynamic QR Code"
-                            style={{ width: '100%', maxWidth: 320, height: 440, objectFit: 'contain' }}
+                            alt="Payment QR Code"
+                            style={{ width: 420, height: 'auto', marginTop: -85 }}
                           />
                         ) : (
                           <Image
                             source={{ uri: qrData.qrCodeUrl }}
-                            style={{ width: '100%', maxWidth: 320, height: 440 }}
-                            resizeMode="contain"
+                            style={{ width: 420, height: 640, marginTop: -85 }}
+                            resizeMode="cover"
                           />
                         )}
                       </View>
                     ) : null}
-
-                    <Text style={styles.qrScanInstructions}>
-                      Ask customer to scan with GPay, PhonePe, Paytm, or BHIM UPI
-                    </Text>
 
                     <View style={styles.pollingStatusRow}>
                       <ActivityIndicator size="small" color="#2E7D32" />
@@ -2042,5 +2051,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#2E7D32',
+  },
+  pendingPaymentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginVertical: 8,
+    alignItems: 'center',
+    width: '100%',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#EAE5D9',
+  },
+  pendingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  pendingTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#E65100',
+  },
+  showQrButton: {
+    backgroundColor: '#2E7D32',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    height: 42,
+    borderRadius: 12,
+    marginVertical: 6,
+    shadowColor: '#2E7D32',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  showQrButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });
