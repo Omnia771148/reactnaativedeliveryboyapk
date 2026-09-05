@@ -32,6 +32,29 @@ class DeliveryBoyForegroundService : Service() {
         return null
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        try {
+            val restartServiceIntent = Intent(applicationContext, this.javaClass).apply {
+                action = ACTION_START
+                putExtra(EXTRA_TITLE, "🟢 Delivery Boy — ON")
+                putExtra(EXTRA_BODY, "Searching for nearby orders...")
+            }
+            val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_ONE_SHOT
+            }
+            val restartPendingIntent = PendingIntent.getService(
+                applicationContext, 1, restartServiceIntent, pendingFlags
+            )
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? android.app.AlarmManager
+            alarmManager?.set(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 1000, restartPendingIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
 

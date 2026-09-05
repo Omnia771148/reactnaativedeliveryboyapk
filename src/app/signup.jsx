@@ -374,28 +374,18 @@ export default function DeliveryBoySignup() {
             checkData.userExists === true ||
             checkData.existsPhone === true ||
             checkData.existsEmail === true ||
-            (checkData.message && (
+            (checkData.success === true && checkData.message && (
               String(checkData.message).toLowerCase().includes('already') ||
               String(checkData.message).toLowerCase().includes('exist') ||
-              String(checkData.message).toLowerCase().includes('registered')
+              String(checkData.message).toLowerCase().includes('registered') ||
+              String(checkData.message).toLowerCase().includes('pending')
             ))
           )
         );
 
         if (userAlreadyExists) {
           setIsSendingOtp(false);
-          let existMsg = "User already exists with this phone number or email. Please log in.";
-          if (checkData && checkData.message && (
-            String(checkData.message).toLowerCase().includes('already') ||
-            String(checkData.message).toLowerCase().includes('exist') ||
-            String(checkData.message).toLowerCase().includes('registered')
-          )) {
-            existMsg = checkData.message;
-          } else if (checkData && checkData.existsPhone) {
-            existMsg = "This phone number is already registered. Please log in.";
-          } else if (checkData && checkData.existsEmail) {
-            existMsg = "This email address is already registered. Please log in.";
-          }
+          let existMsg = checkData && checkData.message ? checkData.message : "User already exists with this phone number or email. Please log in.";
           setModalMessage(existMsg);
           setModalType("error");
           setModalVisible(true);

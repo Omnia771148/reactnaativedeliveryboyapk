@@ -7,12 +7,20 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:549037342596:android:d73b02f1e157a8f28167d1",
+        "mobilesdk_app_id": "1:549037342596:android:962c4645c029cd0f8167d1",
         "android_client_info": {
-          "package_name": "com.Leevon.restuarentapp"
+          "package_name": "com.leevon.delivery"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "549037342596-1d0at7iq171g4ptsqhb0a3k764e745bj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.leevon.delivery",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
         {
           "client_id": "549037342596-kkd837btqfu8dfprgtupmpprmiarc5e7.apps.googleusercontent.com",
           "client_type": 3
@@ -36,17 +44,33 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:549037342596:android:962c4645c029cd0f8167d1",
+        "mobilesdk_app_id": "1:549037342596:android:75a0d6e0bcf45ea78167d1",
         "android_client_info": {
-          "package_name": "com.leevon.delivery"
+          "package_name": "com.leevon.delivery.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "549037342596-1d0at7iq171g4ptsqhb0a3k764e745bj.apps.googleusercontent.com",
+          "client_id": "549037342596-n3vhoq608urp4ipfklfgusghskci7t57.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.leevon.delivery",
+            "package_name": "com.leevon.delivery.app",
+            "certificate_hash": "66e1d4dd7767d38bec3bb306e55e864a9cfc01cb"
+          }
+        },
+        {
+          "client_id": "549037342596-qf4dlcps4pk4c98mmg4fo205e3vblsb2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.leevon.delivery.app",
+            "certificate_hash": "c02a2fa1e90f7ee9d3936625ce830ae70f039a2d"
+          }
+        },
+        {
+          "client_id": "549037342596-se9sueakhn5588um2mgt40mloor3n676.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.leevon.delivery.app",
             "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
           }
         },
@@ -96,6 +120,14 @@
           }
         },
         {
+          "client_id": "549037342596-ul6cli95biaqi6h8h5dnfne6jbi8ks65.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.leevon.deliveryboy",
+            "certificate_hash": "a75953f0a037d21c77c0ee924a2301fef23086ed"
+          }
+        },
+        {
           "client_id": "549037342596-kkd837btqfu8dfprgtupmpprmiarc5e7.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -118,17 +150,17 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:549037342596:android:31ae074ef10672b78167d1",
+        "mobilesdk_app_id": "1:549037342596:android:7ec2193df3a385758167d1",
         "android_client_info": {
-          "package_name": "com.leevondelivery.customer"
+          "package_name": "com.restaurent.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "549037342596-pl94og50usborsvs9j4jaob8hqaoimkd.apps.googleusercontent.com",
+          "client_id": "549037342596-n3a1l0kpi2kfkunhr3fq9d1qdku4lctu.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.leevondelivery.customer",
+            "package_name": "com.restaurent.app",
             "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
           }
         },
