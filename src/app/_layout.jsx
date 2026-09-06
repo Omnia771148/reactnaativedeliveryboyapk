@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
+import { FloatingHelpButton } from '@/components/floating-help-button';
+
 export default function RootLayout() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
@@ -32,6 +34,7 @@ export default function RootLayout() {
     <ErrorBoundary>
       <SafeAreaProvider style={styles.container}>
         <Slot />
+        <FloatingHelpButton />
       </SafeAreaProvider>
     </ErrorBoundary>
   );
