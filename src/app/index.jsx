@@ -2,6 +2,7 @@ import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL, fetchWithTimeout } from '@/constants/api';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { stopOrderSoundNative } from '@/utils/soundService';
 import { registerForFCMAsync, saveFCMTokenToBackend, ensureFCMTokenRegistered } from '@/utils/notifications';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -60,6 +61,7 @@ export default function HomeScreen() {
                 'updatedAt',
                 'lastLoginDate',
               ]);
+              await stopOrderSoundNative();
               if (verifyData.isBlocked === true || verifyData.code === 'ACCOUNT_BLOCKED') {
                 setModalType('error');
                 setModalMessage('Your account has been blocked by administration. Please contact support.');
@@ -88,6 +90,7 @@ export default function HomeScreen() {
                 'updatedAt',
                 'lastLoginDate',
               ]);
+              await stopOrderSoundNative();
               return;
             }
           }

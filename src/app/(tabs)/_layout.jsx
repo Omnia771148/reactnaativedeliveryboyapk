@@ -56,9 +56,9 @@ function CustomTabBar({ state, descriptors, navigation }) {
       try {
         const storedId = await AsyncStorage.getItem('userid');
         const storedActive = await AsyncStorage.getItem('isActive');
-        const userIsActive = storedActive !== 'false';
+        const userIsActive = !!storedId && storedActive !== 'false';
 
-        if (!userIsActive) {
+        if (!storedId || !userIsActive) {
           if (isMounted) {
             setOrderCount(0);
             setHasLiveOrder(false);
@@ -105,7 +105,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
                 order.isAccepted !== true;
               return notRejected && isUnassigned;
             }) : [])
-            : data;
+            : [];
 
           if (currentActiveOrderId) {
             activeOrders = activeOrders.filter(order => order.orderId !== currentActiveOrderId && order._id !== currentActiveOrderId);
@@ -384,6 +384,7 @@ export default function Layout() {
                 'lastLoginDate',
               ]);
               stopDeliveryForegroundService();
+              await stopOrderSoundNative();
               const isActuallyBlocked = data.isBlocked === true || data.code === 'ACCOUNT_BLOCKED';
               const alertMsg = isActuallyBlocked
                 ? 'Your account has been blocked by administration. Please contact support.'
@@ -480,6 +481,12 @@ export default function Layout() {
         unsubscribeMessage = messagingModule().onMessage(async (remoteMessage) => {
           if (isMounted) {
             console.log('Foreground Message received:', remoteMessage);
+
+            const currentUserId = await AsyncStorage.getItem('userid');
+            if (!currentUserId) {
+              await stopSound();
+              return;
+            }
 
             // Check if delivery boy already has an active order in progress/tracker
             let hasActiveOrderInTracker = false;

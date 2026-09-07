@@ -104,12 +104,14 @@ export default function OrdersScreen() {
 
       // Read active status solely from AsyncStorage to avoid database round-trips
       const storedActive = await AsyncStorage.getItem('isActive');
-      const userIsActive = storedActive !== 'false'; // Default to true if not set
+      const userIsActive = !!storedId && storedActive !== 'false'; // Default to true if not set
       setIsActive(userIsActive);
 
-      if (!userIsActive) {
+      if (!storedId || !userIsActive) {
+        setOrders([]);
         setLoading(false);
         setRefreshing(false);
+        DeviceEventEmitter.emit('stopOrderSound');
         return;
       }
 
@@ -159,7 +161,7 @@ export default function OrdersScreen() {
               order.isAccepted !== true;
             return notRejected && isUnassigned;
           }) : [])
-          : data;
+          : [];
 
         // Filter out the order that the current delivery boy has already accepted
         if (currentActiveOrderId) {

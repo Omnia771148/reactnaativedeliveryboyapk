@@ -303,9 +303,17 @@ export default function LiveOrdersScreen() {
           if (activeDriverId && String(activeDriverId) !== String(id)) {
             setActiveOrder(null);
             setIsLocallyPickedUp(false);
+            setQrPaymentPaid(false);
             return;
           }
           setActiveOrder(data);
+
+          const payStat = String(data.paymentStatus || data.payment_status || data.payment?.status || '').toLowerCase().trim();
+          const isDbPaid = payStat === 'paid' || payStat === 'success' || payStat === 'completed' || data.isPaid === true || data.is_paid === true;
+          if (!isDbPaid) {
+            setQrPaymentPaid(false);
+          }
+
           const keysToCheck = [data._id, data.orderId, data.id].filter(Boolean);
           let isPicked = false;
           for (const key of keysToCheck) {
@@ -629,6 +637,7 @@ export default function LiveOrdersScreen() {
           } catch (_e) { }
         }
         setIsLocallyPickedUp(true);
+        setQrPaymentPaid(false);
         // Refresh local state to render OTP input layout
         await fetchActiveOrder(userid);
       } else {

@@ -1,11 +1,12 @@
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { API_URL } from '@/constants/api';
 import { stopDeliveryForegroundService } from '@/utils/foregroundService';
+import { stopOrderSoundNative } from '@/utils/soundService';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, DeviceEventEmitter, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
@@ -117,11 +118,13 @@ export default function SettingsScreen() {
         }
       }
 
-      // 3. Stop Android Foreground Service notification from status bar
+      // 3. Stop Android Foreground Service notification and order audio loop
       try {
+        DeviceEventEmitter.emit('stopOrderSound');
+        await stopOrderSoundNative();
         await stopDeliveryForegroundService();
       } catch (fgErr) {
-        console.error('Error stopping foreground service during logout:', fgErr);
+        console.error('Error stopping foreground service/sound during logout:', fgErr);
       }
 
       await AsyncStorage.multiRemove([
