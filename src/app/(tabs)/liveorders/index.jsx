@@ -203,6 +203,19 @@ export default function LiveOrdersScreen() {
       return;
     }
 
+    const isOrderReady = Boolean(
+      activeOrder.isReady ||
+      activeOrder.status?.toLowerCase() === 'ready' ||
+      activeOrder.orderStatus?.toLowerCase() === 'ready' ||
+      activeOrder.preparationStatus?.toLowerCase() === 'ready'
+    );
+
+    if (isOrderReady) {
+      setRemainingTimeText('00:00');
+      setIsTimerOverdue(true);
+      return;
+    }
+
     const rawPrep = getPrepTimeVal(activeOrder);
     let targetTime = null;
 
@@ -321,7 +334,7 @@ export default function LiveOrdersScreen() {
     }
   }, [userid]);
 
-  // Initial load and periodic polling every 1 minute (60000ms)
+  // Initial load and periodic polling every 30 seconds (30000ms) for order status updates
   useEffect(() => {
     let isMounted = true;
     const loadSessionAndData = async () => {
@@ -354,7 +367,7 @@ export default function LiveOrdersScreen() {
           });
         }
       }
-    }, 60000);
+    }, 30000);
 
     return () => {
       isMounted = false;
@@ -1104,7 +1117,7 @@ export default function LiveOrdersScreen() {
                   {/* PREPARATION TIME BLOCK */}
                   <View style={styles.block}>
                     <Text style={styles.blockLabel}>PREPARATION TIME</Text>
-                    {isTimerOverdue || remainingTimeText === '00:00' || getPrepTimeVal(activeOrder) === 0 ? (
+                    {isTimerOverdue || remainingTimeText === '00:00' || getPrepTimeVal(activeOrder) === 0 || activeOrder?.isReady || activeOrder?.status?.toLowerCase() === 'ready' || activeOrder?.orderStatus?.toLowerCase() === 'ready' ? (
                       <>
                         <View style={styles.timerRow}>
                           <Ionicons name="checkmark-circle" size={26} color="#2E7D32" />
