@@ -296,7 +296,7 @@ function CustomTabBar({ state, descriptors, navigation }) {
           })}
         </View>
 
-        {/* 3. Sliding Active White Circle (rendered on top of background bar) */}
+       
         <Animated.View
           style={[
             styles.activeCircle,
@@ -335,7 +335,7 @@ export default function Layout() {
     });
   }, []);
 
-  // Single-device automatic logout verification effect
+ 
   useEffect(() => {
     let isMounted = true;
 
