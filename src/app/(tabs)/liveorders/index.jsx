@@ -6,11 +6,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, DeviceEventEmitter, Image, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 
 export default function LiveOrdersScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [userid, setUserid] = useState(null);
   const [activeOrder, setActiveOrder] = useState(null);
@@ -670,7 +671,7 @@ export default function LiveOrdersScreen() {
       // Handle paste or auto-fill of multi-character OTP string
       const chars = cleanText.slice(0, 5).split('');
       for (let i = 0; i < 5; i++) {
-        newOtp[i] = chars[i] || '';
+        newOtp[i] = chars[i] ? chars[i].toUpperCase() : '';
       }
       setOtp(newOtp);
       const nextFocus = Math.min(chars.length, 4);
@@ -686,7 +687,7 @@ export default function LiveOrdersScreen() {
       return;
     }
 
-    newOtp[index] = cleanText.slice(-1); // Only store the last character typed
+    newOtp[index] = cleanText.slice(-1).toUpperCase(); // Store character as uppercase
     setOtp(newOtp);
 
     // Auto-focus shifting logic
@@ -894,7 +895,12 @@ export default function LiveOrdersScreen() {
               ref={mainScrollViewRef}
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 24 }
+                {
+                  paddingBottom:
+                    keyboardHeight > 0
+                      ? keyboardHeight + 20
+                      : 68 + Math.max(insets.bottom, 12) + 28,
+                },
               ]}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
@@ -983,11 +989,9 @@ export default function LiveOrdersScreen() {
                               onFocus={() => handleOtpFocus(index)}
                               onBlur={() => setFocusedIndex(null)}
                               placeholder=""
-                              keyboardType="number-pad"
-                              inputMode="numeric"
-                              textContentType="oneTimeCode"
-                              autoComplete="sms-otp"
-                              autoCapitalize="none"
+                              keyboardType="default"
+                              inputMode="text"
+                              autoCapitalize="characters"
                               autoCorrect={false}
                               selectTextOnFocus
                             />
@@ -1048,11 +1052,9 @@ export default function LiveOrdersScreen() {
                                   onFocus={() => handleOtpFocus(index)}
                                   onBlur={() => setFocusedIndex(null)}
                                   placeholder=""
-                                  keyboardType="number-pad"
-                                  inputMode="numeric"
-                                  textContentType="oneTimeCode"
-                                  autoComplete="sms-otp"
-                                  autoCapitalize="none"
+                                  keyboardType="default"
+                                  inputMode="text"
+                                  autoCapitalize="characters"
                                   autoCorrect={false}
                                   selectTextOnFocus
                                 />
@@ -1195,7 +1197,7 @@ export default function LiveOrdersScreen() {
               )}
             </ScrollView>
           ) : (
-            <View style={styles.emptyContainer}>
+            <View style={[styles.emptyContainer, { paddingBottom: 68 + Math.max(insets.bottom, 12) }]}>
               <View style={styles.emptyIconContainer}>
                 <Ionicons name="cart-outline" size={48} color="#B58A55" />
               </View>

@@ -1,4 +1,4 @@
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://deliveryboy-backend-production.up.railway.app';
+export const API_URL = 'https://deliveryboy-backend-production.up.railway.app';
 
 console.log(`[API Config] Connecting to backend at: ${API_URL}`);
 

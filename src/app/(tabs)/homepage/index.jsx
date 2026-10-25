@@ -252,6 +252,8 @@ export default function HomepageScreen() {
     };
   }, [navigation, userid, fetchUserStatusAndEarnings]);
 
+  const isFirstMount = useRef(true);
+
   // Trigger sliding animation & control background service when active state changes
   useEffect(() => {
     Animated.timing(animatedValue, {
@@ -259,6 +261,11 @@ export default function HomepageScreen() {
       duration: 250,
       useNativeDriver: true,
     }).start();
+
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
 
     if (isActive) {
       startDeliveryForegroundService(

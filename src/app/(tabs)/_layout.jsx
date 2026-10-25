@@ -558,6 +558,9 @@ export default function Layout() {
               router.push('/orders');
               DeviceEventEmitter.emit('refreshOrdersCount');
             }
+          })
+          .catch((notifErr) => {
+            console.warn('Initial notification check error on app launch:', notifErr);
           });
 
       } catch (error) {

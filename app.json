@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "deliveryboyapp",
+    "name": "Leevon Delivery Partner App",
     "slug": "deliveryboyapp",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "deliveryboyapp",
@@ -12,6 +12,7 @@
     },
     "android": {
       "package": "com.leevon.deliveryboy",
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
